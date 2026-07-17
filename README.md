@@ -6,10 +6,15 @@ It supports multiple named profiles against the same proxy. Each profile is a se
 
 ## Employee setup
 
-Run the interactive setup command:
+First connect npm to the private Azure Artifacts feed. Open
+[Artifacts > opencode-plugins > Connect to Feed](https://dev.azure.com/nosercloud/AI-Experten-Gruppe/_artifacts/feed/opencode-plugins/connect),
+select **npm**, and follow the instructions for your operating system. This stores credentials in your user-level
+`~/.npmrc`; never commit those credentials.
+
+Then run the interactive setup command:
 
 ```sh
-npx opencode-plugin-neuron setup
+npx @noser/opencode-plugin-neuron setup
 ```
 
 The setup asks for:
@@ -26,8 +31,8 @@ Quit and restart OpenCode after setup, then run `/models`.
 Use `--global` or `--project` to skip the first prompt:
 
 ```sh
-npx opencode-plugin-neuron setup --global
-npx opencode-plugin-neuron setup --project
+npx @noser/opencode-plugin-neuron setup --global
+npx @noser/opencode-plugin-neuron setup --project
 ```
 
 ## Generated config
@@ -39,7 +44,7 @@ A two-profile setup looks like this:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "opencode-plugin-neuron",
+      "@noser/opencode-plugin-neuron",
       {
         "profiles": [
           {
@@ -106,13 +111,23 @@ npm pack --dry-run
 
 ## Publishing
 
-The package name `opencode-plugin-neuron` is currently available on npm. Publish it to the registry employees use:
+The package is private and scoped as `@noser/opencode-plugin-neuron`. Its `publishConfig.registry` is pinned to the
+project-scoped Azure Artifacts feed `opencode-plugins`, so `npm publish` cannot accidentally target public npm.
+
+Authenticate according to
+[Azure Artifacts' npm instructions](https://learn.microsoft.com/azure/devops/artifacts/npm/npmrc?view=azure-devops),
+then publish:
 
 ```sh
 npm publish
 ```
 
-If Noser uses a scoped internal registry, change `name` in `package.json` and the `PACKAGE_NAME` constant in `src/constants.ts` to the scoped package name before publishing.
+Azure Artifacts package versions are immutable. Increment the version before every later publish:
+
+```sh
+npm version patch
+npm publish
+```
 
 ## License
 

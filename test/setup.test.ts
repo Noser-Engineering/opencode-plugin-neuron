@@ -19,7 +19,7 @@ describe("OpenCode config setup", () => {
     expect(config.plugin).toEqual([
       "opencode-wakatime",
       [
-        "opencode-plugin-neuron",
+        "@noser/opencode-plugin-neuron",
         {
           profiles: [{ id: "neuron-work", name: "Neuron Work", baseURL: "https://neuron.noser.com/v1" }],
         },
@@ -29,7 +29,7 @@ describe("OpenCode config setup", () => {
 
   it("updates an existing entry without duplicating it", () => {
     const original = JSON.stringify({
-      plugin: [["opencode-plugin-neuron@1.2.3", { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old" }] }]],
+      plugin: [["@noser/opencode-plugin-neuron@1.2.3", { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old" }] }]],
     })
     const updated = updateConfigText(original, [
       { id: "neuron-team", name: "Neuron Team", baseURL: "https://neuron.noser.com/v1", apiKeyEnv: "TEAM_KEY" },
@@ -37,7 +37,7 @@ describe("OpenCode config setup", () => {
     const entry = readNeuronConfigEntry(parseConfigText(updated))
 
     expect(entry).toEqual({
-      packageSpec: "opencode-plugin-neuron@1.2.3",
+      packageSpec: "@noser/opencode-plugin-neuron@1.2.3",
       rawOptions: {
         timeoutMs: 10_000,
         profiles: [

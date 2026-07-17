@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-plugin-neuron",
+  "name": "@noser/opencode-plugin-neuron",
   "version": "0.1.0",
   "description": "OpenCode plugin that discovers models from the Noser Neuron LiteLLM proxy with multi-profile support",
   "type": "module",
@@ -17,7 +17,7 @@
     }
   },
   "bin": {
-    "opencode-neuron": "./dist/cli.js"
+    "opencode-neuron": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -25,7 +25,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm test && npm run build",
@@ -41,6 +41,13 @@
   ],
   "author": "Noser Engineering AG",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://dev.azure.com/nosercloud/AI-Experten-Gruppe/_git/opencode-plugin-neuron"
+  },
+  "publishConfig": {
+    "registry": "https://pkgs.dev.azure.com/nosercloud/AI-Experten-Gruppe/_packaging/opencode-plugins/npm/registry/"
+  },
   "engines": {
     "node": ">=20"
   },
