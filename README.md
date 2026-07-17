@@ -1,27 +1,25 @@
 # OpenCode Neuron plugin
 
-An OpenCode plugin for Noser's Neuron LiteLLM proxy. It requests `GET /v1/models` when OpenCode starts and adds every returned model to the model picker.
+An OpenCode plugin for configurable LiteLLM-compatible proxies. It requests `GET /v1/models` when OpenCode starts and adds every returned model to the model picker. The interactive setup defaults to Noser's Neuron proxy but accepts any HTTPS endpoint or localhost URL.
 
 It supports multiple named profiles against the same proxy. Each profile is a separate OpenCode provider and can use a different API key, so models remain selectable as, for example, `neuron-work/model-id` and `neuron-team/model-id`.
 
 ## Employee setup
 
-First connect npm to the private Azure Artifacts feed. Open
-[Artifacts > opencode-plugins > Connect to Feed](https://dev.azure.com/nosercloud/AI-Experten-Gruppe/_artifacts/feed/opencode-plugins/connect),
-select **npm**, and follow the instructions for your operating system. This stores credentials in your user-level
-`~/.npmrc`; never commit those credentials.
+For a short German employee guide, see [MITARBEITER-SETUP.md](MITARBEITER-SETUP.md).
 
-Then run the interactive setup command:
+Run the interactive setup command directly from public npm:
 
 ```sh
-npx @noser/opencode-plugin-neuron setup
+npx opencode-plugin-neuron setup
 ```
 
 The setup asks for:
 
 - Global or project-level configuration
 - A display name and unique provider ID
-- An API key or the name of an environment variable containing one
+- The LiteLLM proxy URL
+- An API key
 - Any additional profiles to configure
 
 API keys entered directly are stored in OpenCode's standard credential file with mode `0600`; they are never written to `opencode.json`. The setup also verifies the key by listing its available models.
@@ -31,8 +29,8 @@ Quit and restart OpenCode after setup, then run `/models`.
 Use `--global` or `--project` to skip the first prompt:
 
 ```sh
-npx @noser/opencode-plugin-neuron setup --global
-npx @noser/opencode-plugin-neuron setup --project
+npx opencode-plugin-neuron setup --global
+npx opencode-plugin-neuron setup --project
 ```
 
 ## Generated config
@@ -44,7 +42,7 @@ A two-profile setup looks like this:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "@noser/opencode-plugin-neuron",
+      "opencode-plugin-neuron",
       {
         "profiles": [
           {
@@ -54,9 +52,8 @@ A two-profile setup looks like this:
           },
           {
             "id": "neuron-team",
-            "name": "Neuron Team",
-            "baseURL": "https://neuron.noser.com/v1",
-            "apiKeyEnv": "NEURON_TEAM_API_KEY"
+            "name": "Team LiteLLM",
+            "baseURL": "https://litellm.example.com/v1"
           }
         ]
       }
@@ -67,16 +64,7 @@ A two-profile setup looks like this:
 
 The plugin creates the corresponding `provider` entries in memory. You do not need to maintain a `models` block.
 
-### Manual credential setup
-
-For an environment-backed profile, export the configured variable before starting OpenCode:
-
-```sh
-export NEURON_TEAM_API_KEY="your-key"
-opencode
-```
-
-For OpenCode credential storage, the setup command writes an entry keyed by the profile's provider ID to:
+The setup command writes each API key to OpenCode's credential store, keyed by provider ID:
 
 ```text
 ~/.local/share/opencode/auth.json
@@ -88,7 +76,9 @@ For OpenCode credential storage, the setup command writes an entry keyed by the 
 
 - Discovery runs once for every profile at OpenCode startup.
 - Profiles are queried concurrently and authenticated independently.
-- Discovery is pinned to `https://neuron.noser.com/v1` so project configuration cannot redirect stored credentials to another host.
+- Proxy URLs are configurable. Remote proxies must use HTTPS; plain HTTP is accepted only for localhost.
+- Every stored API key is bound to its normalized proxy URL. A project configuration cannot redirect it to another host.
+- Project-selected environment variables and provider API keys are not used for automatic discovery.
 - A profile only sees models available to its own API key.
 - Existing hand-curated entries under `provider.<profile-id>.models` are preserved.
 - A failed or offline profile logs a warning but does not prevent OpenCode from starting.
@@ -111,18 +101,13 @@ npm pack --dry-run
 
 ## Publishing
 
-The package is private and scoped as `@noser/opencode-plugin-neuron`. Its `publishConfig.registry` is pinned to the
-project-scoped Azure Artifacts feed `opencode-plugins`, so `npm publish` cannot accidentally target public npm.
-
-Authenticate according to
-[Azure Artifacts' npm instructions](https://learn.microsoft.com/azure/devops/artifacts/npm/npmrc?view=azure-devops),
-then publish:
+The package is public. Its `publishConfig` is pinned to npmjs.org with public access. Authenticate with npm, then publish:
 
 ```sh
 npm publish
 ```
 
-Azure Artifacts package versions are immutable. Increment the version before every later publish:
+npm package versions are immutable. Increment the version before every later publish:
 
 ```sh
 npm version patch

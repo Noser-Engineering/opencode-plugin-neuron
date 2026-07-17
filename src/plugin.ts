@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { PROVIDER_NPM } from "./constants.js"
-import { readStoredApiKeys } from "./auth.js"
+import { DEFAULT_BASE_URL, PROVIDER_NPM } from "./constants.js"
+import { readStoredApiCredentials, type StoredApiCredential } from "./auth.js"
 import { discoverModels, toModelConfig } from "./discovery.js"
 import { parsePluginOptions } from "./options.js"
 import type { LiteLLMModel, NeuronProfile, OpenCodeConfig, ProviderConfig } from "./types.js"
@@ -13,8 +13,7 @@ interface RuntimeDependencies {
     apiKey: string | undefined,
     options: { timeoutMs: number },
   ) => Promise<LiteLLMModel[]>
-  readApiKeys: () => Promise<Record<string, string>>
-  env: Record<string, string | undefined>
+  readCredentials: () => Promise<Record<string, StoredApiCredential>>
   log: (level: LogLevel, message: string, extra?: Record<string, unknown>) => Promise<void>
 }
 
@@ -38,43 +37,31 @@ export type NeuronPluginFunction = (
   options?: Record<string, unknown>,
 ) => Promise<{ config: (config: unknown) => Promise<void> }>
 
-function resolveEnvironmentReference(value: string, env: NodeJS.ProcessEnv): string | undefined {
-  const match = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)
-  return match?.[1] ? env[match[1]] : value
-}
-
-function resolveApiKey(
+function resolveCredential(
   profile: NeuronProfile,
-  provider: ProviderConfig,
-  storedKeys: Record<string, string>,
-  env: Record<string, string | undefined>,
-): string | undefined {
-  const configuredKey = provider.options?.apiKey
-  if (typeof configuredKey === "string" && configuredKey) return resolveEnvironmentReference(configuredKey, env)
-  if (storedKeys[profile.id]) return storedKeys[profile.id]
-  if (profile.apiKeyEnv && env[profile.apiKeyEnv]) return env[profile.apiKeyEnv]
-  for (const envName of provider.env ?? []) {
-    if (env[envName]) return env[envName]
+  storedCredentials: Record<string, StoredApiCredential>,
+): { apiKey?: string; conflict: boolean } {
+  const credential = storedCredentials[profile.id]
+  if (!credential) return { conflict: false }
+  if (credential.baseURL === profile.baseURL) return { apiKey: credential.key, conflict: false }
+  if (!credential.baseURL && profile.baseURL === DEFAULT_BASE_URL) {
+    return { apiKey: credential.key, conflict: false }
   }
-  if (profile.id === "neuron") return env.NEURON_API_KEY
-  return undefined
+  return { conflict: true }
 }
 
 function ensureProvider(config: OpenCodeConfig, profile: NeuronProfile): ProviderConfig {
   config.provider ??= {}
   const existing = config.provider[profile.id] ?? {}
-  const existingEnvironment = Array.isArray(existing.env) ? existing.env : []
-  const environment = profile.apiKeyEnv
-    ? [...new Set([...existingEnvironment, profile.apiKeyEnv])]
-    : existingEnvironment
+  const { env: _environment, options: rawOptions, ...existingProvider } = existing
+  const { apiKey: _apiKey, ...existingOptions } = rawOptions ?? {}
 
   const provider: ProviderConfig = {
-    ...existing,
+    ...existingProvider,
     npm: existing.npm ?? PROVIDER_NPM,
     name: profile.name,
-    ...(environment.length ? { env: environment } : {}),
     options: {
-      ...existing.options,
+      ...existingOptions,
       baseURL: profile.baseURL,
     },
     models: { ...existing.models },
@@ -94,9 +81,9 @@ export async function enhanceConfig(
   }
   if (!options.profiles.length) return
 
-  let storedKeys: Record<string, string> = {}
+  let storedCredentials: Record<string, StoredApiCredential> = {}
   try {
-    storedKeys = await dependencies.readApiKeys()
+    storedCredentials = await dependencies.readCredentials()
   } catch (error) {
     await dependencies.log("warn", "Could not read OpenCode credentials", {
       error: error instanceof Error ? error.message : String(error),
@@ -105,11 +92,21 @@ export async function enhanceConfig(
 
   await Promise.all(
     options.profiles.map(async (profile) => {
+      const credential = resolveCredential(profile, storedCredentials)
+      if (credential.conflict) {
+        if (config.provider) delete config.provider[profile.id]
+        await dependencies.log("warn", `Credential URL mismatch for ${profile.name}; profile disabled`, {
+          providerID: profile.id,
+          baseURL: profile.baseURL,
+        })
+        return
+      }
       const provider = ensureProvider(config, profile)
-      const apiKey = resolveApiKey(profile, provider, storedKeys, dependencies.env)
 
       try {
-        const discovered = await dependencies.discover(profile.baseURL!, apiKey, { timeoutMs: options.timeoutMs })
+        const discovered = await dependencies.discover(profile.baseURL!, credential.apiKey, {
+          timeoutMs: options.timeoutMs,
+        })
         provider.models ??= {}
         for (const model of discovered) {
           if (provider.models[model.id]) continue
@@ -152,8 +149,7 @@ export const NeuronPlugin: NeuronPluginFunction = async (input, rawOptions) => {
     config: async (config) => {
       await enhanceConfig(config as unknown as OpenCodeConfig, rawOptions, {
         discover: discoverModels,
-        readApiKeys: readStoredApiKeys,
-        env: process.env,
+        readCredentials: readStoredApiCredentials,
         log: createLogger(input),
       })
     },

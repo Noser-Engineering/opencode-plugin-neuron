@@ -16,6 +16,11 @@ interface OAuthAuth {
 type AuthEntry = ApiAuth | OAuthAuth | Record<string, unknown>
 export type AuthStore = Record<string, AuthEntry>
 
+export interface StoredApiCredential {
+  key: string
+  baseURL?: string
+}
+
 export function resolveAuthPath(
   env: Record<string, string | undefined> = process.env,
   platform = process.platform,
@@ -40,28 +45,40 @@ export async function readAuthStore(filePath = resolveAuthPath()): Promise<AuthS
   }
 }
 
-export function extractApiKeys(store: AuthStore): Record<string, string> {
-  const keys: Record<string, string> = {}
+export function extractApiCredentials(store: AuthStore): Record<string, StoredApiCredential> {
+  const credentials: Record<string, StoredApiCredential> = {}
   for (const [providerID, entry] of Object.entries(store)) {
-    if (entry.type === "api" && typeof entry.key === "string" && entry.key) keys[providerID] = entry.key
-    if (entry.type === "oauth" && typeof entry.access === "string" && entry.access) keys[providerID] = entry.access
+    if (entry.type !== "api" || typeof entry.key !== "string" || !entry.key) continue
+    const metadata =
+      entry.metadata && typeof entry.metadata === "object"
+        ? (entry.metadata as Record<string, unknown>)
+        : undefined
+    const baseURL =
+      metadata && typeof metadata.baseURL === "string" ? metadata.baseURL : undefined
+    credentials[providerID] = { key: entry.key, ...(baseURL ? { baseURL } : {}) }
   }
-  return keys
+  return credentials
 }
 
-export async function readStoredApiKeys(filePath = resolveAuthPath()): Promise<Record<string, string>> {
-  return extractApiKeys(await readAuthStore(filePath))
+export async function readStoredApiCredentials(
+  filePath = resolveAuthPath(),
+): Promise<Record<string, StoredApiCredential>> {
+  return extractApiCredentials(await readAuthStore(filePath))
 }
 
 export async function updateApiCredentials(
-  updates: Record<string, string>,
+  updates: Record<string, StoredApiCredential>,
   removals: Iterable<string> = [],
   filePath = resolveAuthPath(),
 ): Promise<void> {
   const store = await readAuthStore(filePath)
   for (const providerID of removals) delete store[providerID]
-  for (const [providerID, key] of Object.entries(updates)) {
-    store[providerID] = { type: "api", key }
+  for (const [providerID, credential] of Object.entries(updates)) {
+    store[providerID] = {
+      type: "api",
+      key: credential.key,
+      ...(credential.baseURL ? { metadata: { baseURL: credential.baseURL } } : {}),
+    }
   }
 
   await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })

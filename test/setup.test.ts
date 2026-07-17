@@ -19,7 +19,7 @@ describe("OpenCode config setup", () => {
     expect(config.plugin).toEqual([
       "opencode-wakatime",
       [
-        "@noser/opencode-plugin-neuron",
+        "opencode-plugin-neuron",
         {
           profiles: [{ id: "neuron-work", name: "Neuron Work", baseURL: "https://neuron.noser.com/v1" }],
         },
@@ -29,23 +29,22 @@ describe("OpenCode config setup", () => {
 
   it("updates an existing entry without duplicating it", () => {
     const original = JSON.stringify({
-      plugin: [["@noser/opencode-plugin-neuron@1.2.3", { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old" }] }]],
+      plugin: [["opencode-plugin-neuron@1.2.3", { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old" }] }]],
     })
     const updated = updateConfigText(original, [
-      { id: "neuron-team", name: "Neuron Team", baseURL: "https://neuron.noser.com/v1", apiKeyEnv: "TEAM_KEY" },
+      { id: "neuron-team", name: "Neuron Team", baseURL: "https://proxy.example/v1" },
     ])
     const entry = readNeuronConfigEntry(parseConfigText(updated))
 
     expect(entry).toEqual({
-      packageSpec: "@noser/opencode-plugin-neuron@1.2.3",
+      packageSpec: "opencode-plugin-neuron@1.2.3",
       rawOptions: {
         timeoutMs: 10_000,
         profiles: [
           {
             id: "neuron-team",
             name: "Neuron Team",
-            baseURL: "https://neuron.noser.com/v1",
-            apiKeyEnv: "TEAM_KEY",
+            baseURL: "https://proxy.example/v1",
           },
         ],
       },
@@ -53,10 +52,33 @@ describe("OpenCode config setup", () => {
         {
           id: "neuron-team",
           name: "Neuron Team",
-          baseURL: "https://neuron.noser.com/v1",
-          apiKeyEnv: "TEAM_KEY",
+          baseURL: "https://proxy.example/v1",
         },
       ],
     })
+  })
+
+  it("migrates the former private package name", () => {
+    const original = JSON.stringify({
+      plugin: [
+        [
+          "@noser/opencode-plugin-neuron",
+          { profiles: [{ id: "neuron", name: "Neuron", apiKeyEnv: "NEURON_API_KEY" }] },
+        ],
+      ],
+    })
+
+    const updated = parseConfigText(
+      updateConfigText(original, [{ id: "neuron", name: "Neuron", baseURL: "https://neuron.noser.com/v1" }]),
+    )
+
+    expect(updated.plugin).toEqual([
+      [
+        "opencode-plugin-neuron",
+        {
+          profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://neuron.noser.com/v1" }],
+        },
+      ],
+    ])
   })
 })

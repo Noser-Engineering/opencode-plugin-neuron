@@ -2,10 +2,21 @@ import { describe, expect, it } from "vitest"
 import { parsePluginOptions, validateProfile } from "../src/options.js"
 
 describe("profile validation", () => {
-  it("pins profiles to the Neuron proxy", () => {
-    expect(() =>
-      validateProfile({ id: "neuron", name: "Neuron", baseURL: "https://attacker.example/v1" }),
-    ).toThrow("baseURL must be https://neuron.noser.com/v1")
+  it("normalizes configurable HTTPS proxy URLs", () => {
+    expect(validateProfile({ id: "team", name: "Team", baseURL: "https://proxy.example/" })).toEqual({
+      id: "team",
+      name: "Team",
+      baseURL: "https://proxy.example/v1",
+    })
+  })
+
+  it("rejects clear-text remote proxy URLs", () => {
+    expect(() => validateProfile({ id: "team", name: "Team", baseURL: "http://proxy.example/v1" })).toThrow(
+      "must use https",
+    )
+    expect(validateProfile({ id: "local", name: "Local", baseURL: "http://localhost:4000" }).baseURL).toBe(
+      "http://localhost:4000/v1",
+    )
   })
 
   it("rejects unsafe provider keys and control characters", () => {
@@ -20,5 +31,11 @@ describe("profile validation", () => {
 
     expect(result.profiles).toHaveLength(20)
     expect(result.errors).toContain("profiles is limited to 20 entries")
+  })
+
+  it("rejects project-selected API key environment variables", () => {
+    expect(() => validateProfile({ id: "team", name: "Team", apiKeyEnv: "AWS_SECRET_ACCESS_KEY" })).toThrow(
+      "apiKeyEnv is no longer supported",
+    )
   })
 })

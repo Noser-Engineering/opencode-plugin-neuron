@@ -2,7 +2,6 @@ export interface NeuronProfile {
   id: string
   name: string
   baseURL?: string
-  apiKeyEnv?: string
 }
 
 export interface NeuronPluginOptions {

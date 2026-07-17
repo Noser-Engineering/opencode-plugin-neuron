@@ -14,6 +14,8 @@ export interface NeuronConfigEntry {
   packageSpec: string
 }
 
+const LEGACY_PACKAGE_NAMES = ["@noser/opencode-plugin-neuron"]
+
 async function exists(filePath: string): Promise<boolean> {
   try {
     await access(filePath)
@@ -75,7 +77,25 @@ export function parseConfigText(text: string, filePath = "opencode.jsonc"): Reco
 }
 
 function isPackageSpec(value: string): boolean {
+  return [PACKAGE_NAME, ...LEGACY_PACKAGE_NAMES].some(
+    (packageName) => value === packageName || value.startsWith(`${packageName}@`),
+  )
+}
+
+function isCurrentPackageSpec(value: string): boolean {
   return value === PACKAGE_NAME || value.startsWith(`${PACKAGE_NAME}@`)
+}
+
+function removeLegacyApiKeyEnv(options: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(options.profiles)) return options
+  return {
+    ...options,
+    profiles: options.profiles.map((profile) => {
+      if (!profile || typeof profile !== "object" || Array.isArray(profile)) return profile
+      const { apiKeyEnv: _apiKeyEnv, ...rest } = profile as Record<string, unknown>
+      return rest
+    }),
+  }
 }
 
 export function readNeuronConfigEntry(config: Record<string, unknown>): NeuronConfigEntry | undefined {
@@ -93,9 +113,10 @@ export function readNeuronConfigEntry(config: Record<string, unknown>): NeuronCo
       entry[1] && typeof entry[1] === "object" && !Array.isArray(entry[1])
         ? (entry[1] as Record<string, unknown>)
         : {}
-    const parsed = parsePluginOptions(rawOptions)
+    const migratedOptions = removeLegacyApiKeyEnv(rawOptions)
+    const parsed = parsePluginOptions(migratedOptions)
     if (parsed.errors.length) throw new Error(parsed.errors.join("; "))
-    return { profiles: parsed.profiles, rawOptions, packageSpec: entry[0] }
+    return { profiles: parsed.profiles, rawOptions: migratedOptions, packageSpec: entry[0] }
   }
   return undefined
 }
@@ -105,7 +126,6 @@ function cleanProfile(profile: NeuronProfile): Record<string, string> {
     id: profile.id,
     name: profile.name,
     ...(profile.baseURL ? { baseURL: profile.baseURL } : {}),
-    ...(profile.apiKeyEnv ? { apiKeyEnv: profile.apiKeyEnv } : {}),
   }
 }
 
@@ -123,7 +143,8 @@ export function updateConfigText(text: string, profiles: NeuronProfile[], filePa
     if (typeof entry === "string") return isPackageSpec(entry)
     return Array.isArray(entry) && typeof entry[0] === "string" && isPackageSpec(entry[0])
   })
-  const packageSpec = existingEntry?.packageSpec ?? PACKAGE_NAME
+  const packageSpec =
+    existingEntry && isCurrentPackageSpec(existingEntry.packageSpec) ? existingEntry.packageSpec : PACKAGE_NAME
   const pluginEntry = [
     packageSpec,
     {

@@ -2,7 +2,6 @@ import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT_MS } from "./constants.js"
 import type { NeuronPluginOptions, NeuronProfile, ParsedPluginOptions } from "./types.js"
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
-const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"])
 const MAX_PROFILES = 20
 
@@ -14,11 +13,16 @@ export function normalizeBaseURL(input: string): string {
   if (url.username || url.password) {
     throw new Error("baseURL must not contain credentials")
   }
+  const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"])
+  if (url.protocol === "http:" && !localHostnames.has(url.hostname)) {
+    throw new Error("baseURL must use https unless it points to localhost")
+  }
 
   url.search = ""
   url.hash = ""
-  url.pathname = url.pathname.replace(/\/+$/, "")
-  if (!url.pathname.endsWith("/v1")) url.pathname += "/v1"
+  let pathname = url.pathname.replace(/\/+$/, "")
+  if (!pathname.endsWith("/v1")) pathname += "/v1"
+  url.pathname = pathname
   return url.toString().replace(/\/$/, "")
 }
 
@@ -38,24 +42,16 @@ export function validateProfile(input: unknown, index = 0): NeuronProfile {
   if (!name) throw new Error(`profiles[${index}].name is required`)
   if (name.length > 100) throw new Error(`profiles[${index}].name must be 100 characters or fewer`)
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`profiles[${index}].name contains control characters`)
+  if (value.apiKeyEnv !== undefined) {
+    throw new Error(`profiles[${index}].apiKeyEnv is no longer supported; run the setup command again`)
+  }
 
   const baseURL = normalizeBaseURL(typeof value.baseURL === "string" ? value.baseURL : DEFAULT_BASE_URL)
-  if (baseURL !== DEFAULT_BASE_URL) {
-    throw new Error(`profiles[${index}].baseURL must be ${DEFAULT_BASE_URL}`)
-  }
-  const apiKeyEnv = typeof value.apiKeyEnv === "string" ? value.apiKeyEnv.trim() : undefined
-  if (apiKeyEnv !== undefined && !ENV_NAME_PATTERN.test(apiKeyEnv)) {
-    throw new Error(`profiles[${index}].apiKeyEnv is not a valid environment variable name`)
-  }
-  if (apiKeyEnv && apiKeyEnv.length > 128) {
-    throw new Error(`profiles[${index}].apiKeyEnv must be 128 characters or fewer`)
-  }
 
   return {
     id,
     name,
     baseURL,
-    ...(apiKeyEnv ? { apiKeyEnv } : {}),
   }
 }
 
@@ -101,8 +97,4 @@ export function slugifyProviderID(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
   return slug || "neuron"
-}
-
-export function defaultApiKeyEnv(providerID: string): string {
-  return `${providerID.replace(/[^a-z0-9]/gi, "_").toUpperCase()}_API_KEY`
 }

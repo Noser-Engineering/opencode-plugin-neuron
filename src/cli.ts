@@ -2,10 +2,16 @@
 
 import { Writable } from "node:stream"
 import { createInterface, type Interface } from "node:readline/promises"
-import { extractApiKeys, readAuthStore, resolveAuthPath, updateApiCredentials } from "./auth.js"
+import {
+  extractApiCredentials,
+  readAuthStore,
+  resolveAuthPath,
+  updateApiCredentials,
+  type StoredApiCredential,
+} from "./auth.js"
 import { DEFAULT_BASE_URL } from "./constants.js"
 import { discoverModels } from "./discovery.js"
-import { defaultApiKeyEnv, slugifyProviderID, validateProfile } from "./options.js"
+import { normalizeBaseURL, slugifyProviderID, validateProfile } from "./options.js"
 import {
   parseConfigText,
   readConfigText,
@@ -111,8 +117,8 @@ async function testConnection(profile: NeuronProfile, apiKey: string | undefined
 async function configureProfile(
   prompts: Prompts,
   profiles: NeuronProfile[],
-  storedKeys: Record<string, string>,
-  credentialUpdates: Record<string, string>,
+  storedCredentials: Record<string, StoredApiCredential>,
+  credentialUpdates: Record<string, StoredApiCredential>,
   credentialRemovals: Set<string>,
 ): Promise<void> {
   const name = await prompts.text("Profile display name", profiles.length ? `Neuron ${profiles.length + 1}` : "Neuron")
@@ -129,49 +135,39 @@ async function configureProfile(
   const existing = profiles.find((profile) => profile.id === providerID)
   if (existing && !(await prompts.confirm(`Replace existing profile \"${existing.name}\"?`, false))) return
 
-  const authMethod = await prompts.select("Authentication", [
-    "Store an API key in OpenCode credentials (recommended)",
-    "Read the API key from an environment variable",
-  ])
-
-  let apiKeyEnv: string | undefined
-  let keyForTest: string | undefined
-  let enteredKey: string | undefined
-  if (authMethod === 0) {
-    const hasStoredKey = Boolean(storedKeys[providerID])
-    const key = await prompts.secret(
-      hasStoredKey ? "API key (leave blank to keep the stored key)" : "API key (leave blank to configure later)",
-    )
-    if (key) {
-      enteredKey = key
-      keyForTest = key
-    } else {
-      keyForTest = storedKeys[providerID]
+  let baseURL = existing?.baseURL ?? DEFAULT_BASE_URL
+  while (true) {
+    try {
+      baseURL = normalizeBaseURL(await prompts.text("LiteLLM base URL", baseURL))
+      break
+    } catch (error) {
+      process.stdout.write(`${error instanceof Error ? error.message : String(error)}\n`)
     }
-  } else {
-    apiKeyEnv = await prompts.text("Environment variable", existing?.apiKeyEnv ?? defaultApiKeyEnv(providerID))
-    while (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(apiKeyEnv)) {
-      process.stdout.write("Enter a valid environment variable name.\n")
-      apiKeyEnv = await prompts.text("Environment variable", defaultApiKeyEnv(providerID))
-    }
-    keyForTest = process.env[apiKeyEnv]
-    if (!keyForTest) process.stdout.write(`Connection test skipped because ${apiKeyEnv} is not set.\n`)
   }
 
-  const profile = validateProfile({
-    id: providerID,
-    name,
-    baseURL: DEFAULT_BASE_URL,
-    ...(apiKeyEnv ? { apiKeyEnv } : {}),
-  })
+  const storedCredential = storedCredentials[providerID]
+  const storedCredentialMatches = Boolean(
+    storedCredential &&
+      (storedCredential.baseURL === baseURL || (!storedCredential.baseURL && baseURL === DEFAULT_BASE_URL)),
+  )
+  const key = await prompts.secret(
+    storedCredentialMatches ? "API key (leave blank to keep the stored key)" : "API key (leave blank to configure later)",
+  )
+  const keyForTest = key || (storedCredentialMatches ? storedCredential?.key : undefined)
+
+  const profile = validateProfile({ id: providerID, name, baseURL })
   const connected = await testConnection(profile, keyForTest)
   if (!connected && !(await prompts.confirm("Save this profile anyway?", false))) return
   replaceProfile(profiles, profile)
-  if (authMethod === 0) {
-    if (enteredKey) credentialUpdates[providerID] = enteredKey
+
+  if (keyForTest) {
+    const credential = { key: keyForTest, baseURL }
+    credentialUpdates[providerID] = credential
+    storedCredentials[providerID] = credential
     credentialRemovals.delete(providerID)
-  } else {
+  } else if (storedCredential) {
     credentialRemovals.add(providerID)
+    delete storedCredentials[providerID]
     delete credentialUpdates[providerID]
   }
 }
@@ -189,8 +185,8 @@ async function runSetup(scopeFlag?: ConfigScope): Promise<void> {
     const config = parseConfigText(configText, configPath)
     const profiles = [...(readNeuronConfigEntry(config)?.profiles ?? [])]
     const authPath = resolveAuthPath()
-    const storedKeys = extractApiKeys(await readAuthStore(authPath))
-    const credentialUpdates: Record<string, string> = {}
+    const storedCredentials = extractApiCredentials(await readAuthStore(authPath))
+    const credentialUpdates: Record<string, StoredApiCredential> = {}
     const credentialRemovals = new Set<string>()
 
     process.stdout.write(`\nConfig: ${configPath}\n`)
@@ -201,7 +197,7 @@ async function runSetup(scopeFlag?: ConfigScope): Promise<void> {
 
     let addAnother = await prompts.confirm(profiles.length ? "Add or update a profile?" : "Configure a profile?", true)
     while (addAnother) {
-      await configureProfile(prompts, profiles, storedKeys, credentialUpdates, credentialRemovals)
+      await configureProfile(prompts, profiles, storedCredentials, credentialUpdates, credentialRemovals)
       addAnother = await prompts.confirm("Configure another profile?", false)
     }
 
