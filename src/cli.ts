@@ -9,7 +9,6 @@ import {
   updateApiCredentials,
   type StoredApiCredential,
 } from "./auth.js"
-import { DEFAULT_BASE_URL } from "./constants.js"
 import { discoverModels } from "./discovery.js"
 import { normalizeBaseURL, slugifyProviderID, validateProfile } from "./options.js"
 import {
@@ -88,7 +87,7 @@ class Prompts {
 function usage(): string {
   return `opencode-neuron setup [--global | --project]
 
-Interactively adds one or more named Neuron profiles to OpenCode.
+Interactively adds one or more named LiteLLM profiles to OpenCode.
 
 Options:
   --global   Write the global OpenCode config (default when selected)
@@ -121,21 +120,17 @@ async function configureProfile(
   credentialUpdates: Record<string, StoredApiCredential>,
   credentialRemovals: Set<string>,
 ): Promise<void> {
-  const name = await prompts.text("Profile display name", profiles.length ? `Neuron ${profiles.length + 1}` : "Neuron")
-  let providerID = await prompts.text("Provider ID", slugifyProviderID(name))
-  while (
-    !/^[a-z0-9][a-z0-9._-]*$/.test(providerID) ||
-    providerID.length > 64 ||
-    ["__proto__", "constructor", "prototype"].includes(providerID)
-  ) {
-    process.stdout.write("Use up to 64 lowercase letters, numbers, dots, underscores, or hyphens.\n")
-    providerID = await prompts.text("Provider ID", slugifyProviderID(name))
-  }
+  const name = await prompts.text(
+    "Profile display name",
+    profiles.length ? `LiteLLM ${profiles.length + 1}` : "LiteLLM",
+  )
+  const providerID = slugifyProviderID(name)
+  process.stdout.write(`Provider ID: ${providerID} (used internally in model names)\n`)
 
   const existing = profiles.find((profile) => profile.id === providerID)
   if (existing && !(await prompts.confirm(`Replace existing profile \"${existing.name}\"?`, false))) return
 
-  let baseURL = existing?.baseURL ?? DEFAULT_BASE_URL
+  let baseURL = existing?.baseURL ?? ""
   while (true) {
     try {
       baseURL = normalizeBaseURL(await prompts.text("LiteLLM base URL", baseURL))
@@ -147,8 +142,7 @@ async function configureProfile(
 
   const storedCredential = storedCredentials[providerID]
   const storedCredentialMatches = Boolean(
-    storedCredential &&
-      (storedCredential.baseURL === baseURL || (!storedCredential.baseURL && baseURL === DEFAULT_BASE_URL)),
+    storedCredential && storedCredential.baseURL === baseURL,
   )
   const key = await prompts.secret(
     storedCredentialMatches ? "API key (leave blank to keep the stored key)" : "API key (leave blank to configure later)",
@@ -211,7 +205,7 @@ async function runSetup(scopeFlag?: ConfigScope): Promise<void> {
       await updateApiCredentials(credentialUpdates, credentialRemovals, authPath)
     }
 
-    process.stdout.write(`\n[ok] Configured ${profiles.length} Neuron profile${profiles.length === 1 ? "" : "s"}.\n`)
+    process.stdout.write(`\n[ok] Configured ${profiles.length} LiteLLM profile${profiles.length === 1 ? "" : "s"}.\n`)
     process.stdout.write("Quit and restart OpenCode, then use /models to select a model.\n")
   } finally {
     prompts.close()

@@ -10,7 +10,7 @@ describe("OpenCode config setup", () => {
 }
 `
     const updated = updateConfigText(original, [
-      { id: "neuron-work", name: "Neuron Work", baseURL: "https://neuron.noser.com/v1" },
+      { id: "work", name: "Work", baseURL: "https://proxy.example/v1" },
     ])
 
     expect(updated).toContain("// Keep this employee-specific plugin.")
@@ -21,7 +21,7 @@ describe("OpenCode config setup", () => {
       [
         "opencode-plugin-neuron",
         {
-          profiles: [{ id: "neuron-work", name: "Neuron Work", baseURL: "https://neuron.noser.com/v1" }],
+          profiles: [{ id: "work", name: "Work", baseURL: "https://proxy.example/v1" }],
         },
       ],
     ])
@@ -29,7 +29,12 @@ describe("OpenCode config setup", () => {
 
   it("updates an existing entry without duplicating it", () => {
     const original = JSON.stringify({
-      plugin: [["opencode-plugin-neuron@1.2.3", { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old" }] }]],
+      plugin: [
+        [
+          "opencode-plugin-neuron@1.2.3",
+          { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old", baseURL: "https://old.example/v1" }] },
+        ],
+      ],
     })
     const updated = updateConfigText(original, [
       { id: "neuron-team", name: "Neuron Team", baseURL: "https://proxy.example/v1" },
@@ -63,20 +68,24 @@ describe("OpenCode config setup", () => {
       plugin: [
         [
           "@noser/opencode-plugin-neuron",
-          { profiles: [{ id: "neuron", name: "Neuron", apiKeyEnv: "NEURON_API_KEY" }] },
+          {
+            profiles: [
+              { id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1", apiKeyEnv: "OLD_KEY" },
+            ],
+          },
         ],
       ],
     })
 
     const updated = parseConfigText(
-      updateConfigText(original, [{ id: "neuron", name: "Neuron", baseURL: "https://neuron.noser.com/v1" }]),
+      updateConfigText(original, [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }]),
     )
 
     expect(updated.plugin).toEqual([
       [
         "opencode-plugin-neuron",
         {
-          profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://neuron.noser.com/v1" }],
+          profiles: [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }],
         },
       ],
     ])

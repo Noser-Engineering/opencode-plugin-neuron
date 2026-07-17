@@ -1,4 +1,4 @@
-import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT_MS } from "./constants.js"
+import { DEFAULT_TIMEOUT_MS } from "./constants.js"
 import type { NeuronPluginOptions, NeuronProfile, ParsedPluginOptions } from "./types.js"
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
@@ -46,7 +46,10 @@ export function validateProfile(input: unknown, index = 0): NeuronProfile {
     throw new Error(`profiles[${index}].apiKeyEnv is no longer supported; run the setup command again`)
   }
 
-  const baseURL = normalizeBaseURL(typeof value.baseURL === "string" ? value.baseURL : DEFAULT_BASE_URL)
+  if (typeof value.baseURL !== "string" || !value.baseURL.trim()) {
+    throw new Error(`profiles[${index}].baseURL is required`)
+  }
+  const baseURL = normalizeBaseURL(value.baseURL)
 
   return {
     id,
@@ -57,12 +60,14 @@ export function validateProfile(input: unknown, index = 0): NeuronProfile {
 
 export function parsePluginOptions(input?: Record<string, unknown>): ParsedPluginOptions {
   const value = (input ?? {}) as NeuronPluginOptions
-  const rawProfiles = value.profiles ?? [{ id: "neuron", name: "Neuron", baseURL: DEFAULT_BASE_URL }]
+  const rawProfiles = value.profiles ?? []
   const profiles: NeuronProfile[] = []
   const errors: string[] = []
   const ids = new Set<string>()
 
-  if (!Array.isArray(rawProfiles)) {
+  if (value.profiles === undefined) {
+    errors.push("profiles must be configured; run the setup command")
+  } else if (!Array.isArray(rawProfiles)) {
     errors.push("profiles must be an array")
   } else {
     if (rawProfiles.length > MAX_PROFILES) errors.push(`profiles is limited to ${MAX_PROFILES} entries`)
@@ -96,5 +101,6 @@ export function slugifyProviderID(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-  return slug || "neuron"
+  const providerID = slug || "litellm"
+  return UNSAFE_OBJECT_KEYS.has(providerID) ? `litellm-${providerID}` : providerID
 }

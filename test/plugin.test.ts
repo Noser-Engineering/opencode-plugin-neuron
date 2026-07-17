@@ -13,30 +13,30 @@ describe("enhanceConfig", () => {
       config,
       {
         profiles: [
-          { id: "neuron-a", name: "Neuron A", baseURL: "https://neuron.noser.com/v1" },
-          { id: "neuron-b", name: "Neuron B", baseURL: "https://neuron.noser.com/v1" },
+          { id: "proxy-a", name: "Proxy A", baseURL: "https://proxy.example/v1" },
+          { id: "proxy-b", name: "Proxy B", baseURL: "https://proxy.example/v1" },
         ],
       },
       {
         discover,
         readCredentials: async () => ({
-          "neuron-a": { key: "key-a", baseURL: "https://neuron.noser.com/v1" },
-          "neuron-b": { key: "key-b", baseURL: "https://neuron.noser.com/v1" },
+          "proxy-a": { key: "key-a", baseURL: "https://proxy.example/v1" },
+          "proxy-b": { key: "key-b", baseURL: "https://proxy.example/v1" },
         }),
         log: async () => undefined,
       },
     )
 
     expect(discover).toHaveBeenCalledTimes(2)
-    expect(discover).toHaveBeenCalledWith("https://neuron.noser.com/v1", "key-a", { timeoutMs: 5_000 })
-    expect(discover).toHaveBeenCalledWith("https://neuron.noser.com/v1", "key-b", { timeoutMs: 5_000 })
-    expect(config.provider?.["neuron-a"]).toMatchObject({
-      name: "Neuron A",
+    expect(discover).toHaveBeenCalledWith("https://proxy.example/v1", "key-a", { timeoutMs: 5_000 })
+    expect(discover).toHaveBeenCalledWith("https://proxy.example/v1", "key-b", { timeoutMs: 5_000 })
+    expect(config.provider?.["proxy-a"]).toMatchObject({
+      name: "Proxy A",
       npm: "@ai-sdk/openai-compatible",
       models: { "model-a": { name: "model-a" } },
     })
-    expect(config.provider?.["neuron-b"]).toMatchObject({
-      name: "Neuron B",
+    expect(config.provider?.["proxy-b"]).toMatchObject({
+      name: "Proxy B",
       models: { "model-b": { name: "model-b" } },
     })
   })
@@ -60,22 +60,22 @@ describe("enhanceConfig", () => {
           {
             id: "neuron-team",
             name: "Neuron Team",
-            baseURL: "https://neuron.noser.com/v1",
+            baseURL: "https://proxy.example/v1",
           },
         ],
       },
       {
         discover,
         readCredentials: async () => ({
-          "neuron-team": { key: "bound-key", baseURL: "https://neuron.noser.com/v1" },
+          "neuron-team": { key: "bound-key", baseURL: "https://proxy.example/v1" },
         }),
         log: async () => undefined,
       },
     )
 
-    expect(discover).toHaveBeenCalledWith("https://neuron.noser.com/v1", "bound-key", { timeoutMs: 5_000 })
+    expect(discover).toHaveBeenCalledWith("https://proxy.example/v1", "bound-key", { timeoutMs: 5_000 })
     expect(config.provider?.["neuron-team"]?.env).toBeUndefined()
-    expect(config.provider?.["neuron-team"]?.options).toEqual({ baseURL: "https://neuron.noser.com/v1" })
+    expect(config.provider?.["neuron-team"]?.options).toEqual({ baseURL: "https://proxy.example/v1" })
     expect(config.provider?.["neuron-team"]?.models).toEqual({
       shared: { name: "Curated name", reasoning: true },
       "new-model": { name: "new-model" },
@@ -88,7 +88,7 @@ describe("enhanceConfig", () => {
 
     await enhanceConfig(
       config,
-      { profiles: [{ id: "neuron", name: "Neuron" }] },
+      { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] },
       {
         discover: async () => {
           throw new Error("offline")
@@ -135,19 +135,19 @@ describe("enhanceConfig", () => {
     )
   })
 
-  it("keeps legacy unbound credentials limited to the original Neuron URL", async () => {
+  it("rejects legacy credentials that are not bound to a URL", async () => {
     const discover = vi.fn(async () => [{ id: "model" }])
 
     await enhanceConfig(
       {},
-      { profiles: [{ id: "neuron", name: "Neuron" }] },
+      { profiles: [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }] },
       {
         discover,
-        readCredentials: async () => ({ neuron: { key: "legacy-key" } }),
+        readCredentials: async () => ({ legacy: { key: "legacy-key" } }),
         log: async () => undefined,
       },
     )
 
-    expect(discover).toHaveBeenCalledWith("https://neuron.noser.com/v1", "legacy-key", { timeoutMs: 5_000 })
+    expect(discover).not.toHaveBeenCalled()
   })
 })

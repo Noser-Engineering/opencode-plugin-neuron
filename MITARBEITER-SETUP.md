@@ -15,10 +15,11 @@ npx opencode-plugin-neuron setup --global
 Der Assistent fragt nach:
 
 - Anzeigename, zum Beispiel `Neuron Arbeit`
-- Provider-ID, zum Beispiel `neuron-arbeit`
-- LiteLLM-URL; für Neuron einfach den Vorschlagswert übernehmen
+- LiteLLM-URL deines Teams
 - Neuron-API-Key
 - Optional weiteren Profilen mit eigenen API-Keys
+
+Die technische Provider-ID wird automatisch aus dem Anzeigenamen erzeugt. Sie erscheint später als Präfix vor dem Modellnamen, zum Beispiel `neuron-arbeit/modell-name`.
 
 Der Key wird sicher in den OpenCode-Zugangsdaten und nicht in `opencode.json` gespeichert.
 

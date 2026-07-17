@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { DEFAULT_BASE_URL, PROVIDER_NPM } from "./constants.js"
+import { PROVIDER_NPM } from "./constants.js"
 import { readStoredApiCredentials, type StoredApiCredential } from "./auth.js"
 import { discoverModels, toModelConfig } from "./discovery.js"
 import { parsePluginOptions } from "./options.js"
@@ -44,9 +44,6 @@ function resolveCredential(
   const credential = storedCredentials[profile.id]
   if (!credential) return { conflict: false }
   if (credential.baseURL === profile.baseURL) return { apiKey: credential.key, conflict: false }
-  if (!credential.baseURL && profile.baseURL === DEFAULT_BASE_URL) {
-    return { apiKey: credential.key, conflict: false }
-  }
   return { conflict: true }
 }
 

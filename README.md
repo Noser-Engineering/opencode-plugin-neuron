@@ -1,6 +1,6 @@
 # OpenCode Neuron plugin
 
-An OpenCode plugin for configurable LiteLLM-compatible proxies. It requests `GET /v1/models` when OpenCode starts and adds every returned model to the model picker. The interactive setup defaults to Noser's Neuron proxy but accepts any HTTPS endpoint or localhost URL.
+An OpenCode plugin for configurable LiteLLM-compatible proxies. It requests `GET /v1/models` when OpenCode starts and adds every returned model to the model picker. The interactive setup accepts any HTTPS endpoint or localhost URL.
 
 It supports multiple named profiles against the same proxy. Each profile is a separate OpenCode provider and can use a different API key, so models remain selectable as, for example, `neuron-work/model-id` and `neuron-team/model-id`.
 
@@ -17,7 +17,7 @@ npx opencode-plugin-neuron setup
 The setup asks for:
 
 - Global or project-level configuration
-- A display name and unique provider ID
+- A display name; the technical provider ID is generated automatically
 - The LiteLLM proxy URL
 - An API key
 - Any additional profiles to configure
@@ -46,9 +46,9 @@ A two-profile setup looks like this:
       {
         "profiles": [
           {
-            "id": "neuron-work",
-            "name": "Neuron Work",
-            "baseURL": "https://neuron.noser.com/v1"
+            "id": "work-litellm",
+            "name": "Work LiteLLM",
+            "baseURL": "https://litellm.example.com/v1"
           },
           {
             "id": "neuron-team",
