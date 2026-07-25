@@ -21,16 +21,17 @@ export interface StoredApiCredential {
   baseURL?: string
 }
 
+// Mirrors OpenCode's own data directory resolution (xdg-basedir with a homedir
+// fallback). OpenCode has no Windows special case: on every platform it reads
+// XDG_DATA_HOME or ~/.local/share. Do not add a LOCALAPPDATA branch here — the
+// key would land in a file OpenCode never reads, so models would still be
+// listed while every request failed with 401.
 export function resolveAuthPath(
   env: Record<string, string | undefined> = process.env,
-  platform = process.platform,
   home = homedir(),
 ): string {
   if (env.OPENCODE_AUTH_PATH) return env.OPENCODE_AUTH_PATH
   if (env.XDG_DATA_HOME) return join(env.XDG_DATA_HOME, "opencode", "auth.json")
-  if (platform === "win32") {
-    return join(env.LOCALAPPDATA ?? join(home, "AppData", "Local"), "opencode", "auth.json")
-  }
   return join(home, ".local", "share", "opencode", "auth.json")
 }
 
