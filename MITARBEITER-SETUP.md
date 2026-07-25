@@ -23,6 +23,26 @@ Die technische Provider-ID wird automatisch aus dem Anzeigenamen erzeugt. Sie er
 
 Der Key wird sicher in den OpenCode-Zugangsdaten und nicht in `opencode.json` gespeichert.
 
+### Ohne Rückfragen
+
+Wer alles schon weiss, gibt es direkt mit an — dann läuft das Setup ohne eine einzige Frage durch:
+
+```sh
+npx opencode-plugin-neuron setup --global \
+  --name "Neuron Arbeit" \
+  --url https://litellm.example.com/v1 \
+  --key sk-dein-key
+```
+
+Damit der Key nicht in der Shell-History landet, stattdessen:
+
+```sh
+NEURON_API_KEY=sk-dein-key npx opencode-plugin-neuron setup --global \
+  --name "Neuron Arbeit" --url https://litellm.example.com/v1
+```
+
+Der Befehl kann jederzeit erneut ausgeführt werden; ein bestehendes Profil wird dabei aktualisiert.
+
 ## 2. OpenCode neu starten
 
 OpenCode vollständig beenden und neu starten. Danach `/models` ausführen und ein Modell unter dem eingerichteten Neuron-Profil auswählen.
