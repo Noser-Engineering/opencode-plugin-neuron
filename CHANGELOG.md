@@ -1,0 +1,69 @@
+# Changelog
+
+## 0.3.0
+
+### Providers nobody declared are blocked
+
+This changes what existing users see. A provider that used to appear because a
+credential for it happened to exist is gone after the update.
+
+OpenCode loads a provider as soon as any credential for it exists, so a
+leftover `ANTHROPIC_API_KEY`, a `GITHUB_TOKEN` or the built-in `opencode`
+provider could make an uncleared endpoint selectable. The plugin now blocks
+providers that appear in no configuration file.
+
+Anything declared in `opencode.json` keeps working, including the plugin's own
+profiles. To get a provider back, name it:
+
+```json
+{ "provider": { "anthropic": {} } }
+```
+
+Two new plugin options: `denyProviders` extends the block list, `enforce:
+false` turns the layer off and is logged at startup.
+
+Also set: `share` to `"disabled"`, `autoupdate` to `"notify"` unless it is
+already `false`, and a `deny provider.use` policy per blocked provider.
+
+Known limitations, both documented in the README: the block list cannot cover
+all 172 providers in the models.dev catalog, and `experimental.policies` is
+inert on OpenCode 1.18.4, so `disabled_providers` is what enforces the block
+today.
+
+The layer applies even when the plugin's own configuration is broken or the
+proxy is unreachable — models are the thing that fails, never the protection.
+
+### Models carry real metadata
+
+Discovery now prefers `GET /v1/model_group/info` and falls back to
+`GET /v1/models`.
+
+- Costs are populated, converted from LiteLLM's per-token prices to the
+  per-million unit OpenCode expects. The picker no longer shows zero for
+  everything.
+- `reasoning` comes from `supports_reasoning` instead of a regex over model
+  ids that was wrong for Claude, Gemini and every custom alias. The heuristic
+  survives only in the fallback path, which reports no capabilities.
+- `supports_pdf_input` is mapped to the `pdf` input modality.
+- Wildcard entries are dropped: they are LiteLLM access rules, not callable
+  models.
+- Models whose mode is not `chat` or `responses` are dropped, so embeddings,
+  image and audio models no longer reach the picker. An entry without a mode
+  is kept.
+
+### One discovery request per profile
+
+The config hook runs several times per process and used to issue a fresh
+request per profile each time. Results are now cached for the process
+lifetime, keyed by profile and base URL.
+
+### Verification
+
+`scripts/verify-protection.sh` checks the layer against an installed OpenCode
+and runs as its own CI job. It exists because the whole construction depends
+on the `config` hook running before OpenCode resolves providers, which only a
+real OpenCode can confirm. Run it after every OpenCode update.
+
+## 0.2.2
+
+Setup flags for name, URL and API key. Credential path fixed on Windows.

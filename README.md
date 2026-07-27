@@ -1,8 +1,10 @@
 # OpenCode Neuron plugin
 
-An OpenCode plugin for configurable LiteLLM-compatible proxies. It requests `GET /v1/models` when OpenCode starts and adds every returned model to the model picker. The interactive setup accepts any HTTPS endpoint or localhost URL.
+An OpenCode plugin for configurable LiteLLM-compatible proxies. When OpenCode starts it asks the proxy which models the key may use and adds them to the model picker. The interactive setup accepts any HTTPS endpoint or localhost URL.
 
 It supports multiple named profiles against the same proxy. Each profile is a separate OpenCode provider and can use a different API key, so models remain selectable as, for example, `neuron-work/model-id` and `neuron-team/model-id`.
+
+It also blocks providers nobody asked for. See [Compliance behavior](#compliance-behavior).
 
 ## Employee setup
 
@@ -105,9 +107,68 @@ The setup command writes each API key to OpenCode's credential store, keyed by p
 
 This path matches OpenCode's own credential store on every platform, Windows included: `XDG_DATA_HOME` is honored when set, otherwise the location is derived from the home directory. On Windows that means `%USERPROFILE%\.local\share\opencode\auth.json` — OpenCode does not use `%LOCALAPPDATA%` for its data directory. `OPENCODE_AUTH_PATH` overrides the path entirely.
 
+## Compliance behavior
+
+OpenCode loads a provider as soon as a credential for it exists. A leftover `ANTHROPIC_API_KEY` from another engagement, a `GITHUB_TOKEN`, or the built-in `opencode` provider is enough to make an endpoint selectable that nobody cleared for the data being worked on. From 0.3.0 the plugin closes that gap.
+
+**Declaring a provider is how you approve it.** OpenCode fills `config.provider` from configuration files only, never from an autoloaded credential. Everything named in `opencode.json` keeps working, including the plugin's own profiles; the plugin only blocks what nobody named:
+
+```json
+{
+  "provider": {
+    "anthropic": {}
+  }
+}
+```
+
+Two lines, and `anthropic` is available again with its full model list from models.dev. That is deliberate and not a hole to be plugged. The goal is to stop an accident, not to stop a decision. Anyone who writes a provider into their config has made a decision.
+
+Alongside that, the plugin sets:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `share` | `"disabled"` | `/share` publishes the conversation including code excerpts to opencode.ai, where a CDN caches it |
+| `autoupdate` | `"notify"` | an unattended update can introduce a new preconfigured provider. An existing `false` is stricter and is left alone |
+| `disabled_providers` | the block list | entries already present are kept |
+| `experimental.policies` | `deny provider.use` per blocked provider | see the limitation below |
+
+### What this does not cover
+
+- **The block list cannot be complete.** All 172 providers in the models.dev catalog load from an environment variable, and an OpenCode release can add more. The list covers the mainstream vendors, hyperscalers, developer platforms and gateways; a credential for something outside it is still picked up. Extend the list with `denyProviders`.
+- **`experimental.policies` has no effect on OpenCode 1.18.4.** Policy evaluation lives in the v2 catalog, which that release does not use to resolve providers. `disabled_providers` is what enforces the block today; the policies are written so the intent is already expressed in the mechanism OpenCode is moving towards. `scripts/verify-protection.sh` reports which of the two the installed OpenCode honors.
+- **Deliberate misuse is out of scope.** Anyone can declare a provider, or set `enforce: false`.
+
+### Options
+
+```json
+[
+  "opencode-plugin-neuron",
+  {
+    "profiles": [{ "id": "neuron", "name": "Neuron", "baseURL": "https://litellm.example.com/v1" }],
+    "denyProviders": ["some-internal-gateway"],
+    "enforce": true
+  }
+]
+```
+
+`denyProviders` adds to the block list; a provider that is also declared stays available. `enforce: false` turns the whole layer off and is logged as a warning at startup. Only a literal `false` does that: a malformed value leaves protection on and reports the mistake, because a typo must not silently disable it.
+
+The layer runs even when the plugin's own configuration is broken or the proxy is unreachable. In that case you lose your models but keep the protection, never the other way around.
+
+### After an OpenCode update
+
+```sh
+npm run build && ./scripts/verify-protection.sh
+```
+
+The layer depends on the `config` hook running before OpenCode resolves providers. That holds in 1.18.4 and is the kind of thing a release can change quietly, so the script checks it against a real installation. It also runs as its own CI job.
+
 ## Behavior
 
-- Discovery runs once for every profile at OpenCode startup.
+- Discovery prefers `GET /v1/model_group/info`, which reports one entry per alias with mode, context limits, costs and capability flags. It falls back to `GET /v1/models` for older LiteLLM versions and restricted keys.
+- Costs are converted from LiteLLM's per-token prices to the per-million unit OpenCode expects.
+- Wildcard entries are LiteLLM access rules rather than callable models and are dropped, as is anything whose mode is not `chat` or `responses`. An entry without a mode is kept.
+- Discovery runs once for every profile at OpenCode startup, and the result is reused for the rest of the process.
 - Profiles are queried concurrently and authenticated independently.
 - Proxy URLs are configurable. Remote proxies must use HTTPS; plain HTTP is accepted only for localhost.
 - Every stored API key is bound to its normalized proxy URL. A project configuration cannot redirect it to another host.
@@ -116,6 +177,7 @@ This path matches OpenCode's own credential store on every platform, Windows inc
 - Existing hand-curated entries under `provider.<profile-id>.models` are preserved.
 - A failed or offline profile logs a warning but does not prevent OpenCode from starting.
 - Discovery is capped at 5 seconds by default. Set `timeoutMs` in the plugin options to a value from 1000 to 30000 milliseconds to override it.
+- A model the proxy reports is only added if the provider does not already define it, so hand-curated entries win.
 
 OpenCode only reads plugin configuration during startup. Restart it whenever profiles or LiteLLM's model list change.
 
