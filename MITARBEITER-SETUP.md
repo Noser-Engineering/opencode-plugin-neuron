@@ -9,7 +9,7 @@
 ## 1. Plugin konfigurieren
 
 ```sh
-npx opencode-plugin-neuron setup --global
+npx @noser/opencode-plugin-neuron setup --global
 ```
 
 Der Assistent fragt nach:
@@ -28,7 +28,7 @@ Der Key wird sicher in den OpenCode-Zugangsdaten und nicht in `opencode.json` ge
 Wer alles schon weiss, gibt es direkt mit an — dann läuft das Setup ohne eine einzige Frage durch:
 
 ```sh
-npx opencode-plugin-neuron setup --global \
+npx @noser/opencode-plugin-neuron setup --global \
   --name "Neuron Arbeit" \
   --url https://litellm.example.com/v1 \
   --key sk-dein-key
@@ -37,7 +37,7 @@ npx opencode-plugin-neuron setup --global \
 Damit der Key nicht in der Shell-History landet, stattdessen:
 
 ```sh
-NEURON_API_KEY=sk-dein-key npx opencode-plugin-neuron setup --global \
+NEURON_API_KEY=sk-dein-key npx @noser/opencode-plugin-neuron setup --global \
   --name "Neuron Arbeit" --url https://litellm.example.com/v1
 ```
 

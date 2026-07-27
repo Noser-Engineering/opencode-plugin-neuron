@@ -6,14 +6,14 @@ It supports multiple named profiles against the same proxy. Each profile is a se
 
 It also blocks providers nobody asked for. See [Compliance behavior](#compliance-behavior).
 
-## Employee setup
+## Setup
 
-For a short German employee guide, see [MITARBEITER-SETUP.md](MITARBEITER-SETUP.md).
+A short German onboarding guide lives in the repository as `MITARBEITER-SETUP.md`. It is Noser-internal and deliberately not part of the published package.
 
-Run the interactive setup command directly from public npm:
+Run the interactive setup command:
 
 ```sh
-npx opencode-plugin-neuron setup
+npx @noser/opencode-plugin-neuron setup
 ```
 
 The setup asks for:
@@ -30,7 +30,7 @@ Quit and restart OpenCode after setup, then run `/models`.
 
 ## Skipping prompts
 
-Every flag skips its own question, so `npx opencode-plugin-neuron setup --global` only asks about the profile itself:
+Every flag skips its own question, so `npx @noser/opencode-plugin-neuron setup --global` only asks about the profile itself:
 
 | Flag | Skips |
 | --- | --- |
@@ -42,7 +42,7 @@ Every flag skips its own question, so `npx opencode-plugin-neuron setup --global
 Passing `--url` runs the whole setup without a single prompt, which is what onboarding instructions and scripts want. It then requires `--global` or `--project`, because the scope cannot be guessed:
 
 ```sh
-npx opencode-plugin-neuron setup --global \
+npx @noser/opencode-plugin-neuron setup --global \
   --name "Neuron Work" \
   --url https://litellm.example.com/v1 \
   --key sk-123
@@ -58,11 +58,11 @@ In this mode an existing profile of the same ID is updated without asking, so th
 
 ```sh
 # Read the key from stdin (requires --url)
-echo "$KEY" | npx opencode-plugin-neuron setup --global \
+echo "$KEY" | npx @noser/opencode-plugin-neuron setup --global \
   --url https://litellm.example.com/v1 --key-stdin
 
 # Or pass it in the environment; works in both modes
-NEURON_API_KEY="$KEY" npx opencode-plugin-neuron setup --global \
+NEURON_API_KEY="$KEY" npx @noser/opencode-plugin-neuron setup --global \
   --url https://litellm.example.com/v1
 ```
 
@@ -77,7 +77,7 @@ A two-profile setup looks like this:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "opencode-plugin-neuron",
+      "@noser/opencode-plugin-neuron",
       {
         "profiles": [
           {
@@ -142,7 +142,7 @@ Alongside that, the plugin sets:
 
 ```json
 [
-  "opencode-plugin-neuron",
+  "@noser/opencode-plugin-neuron",
   {
     "profiles": [{ "id": "neuron", "name": "Neuron", "baseURL": "https://litellm.example.com/v1" }],
     "denyProviders": ["some-internal-gateway"],
