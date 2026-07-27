@@ -7,6 +7,8 @@ export interface NeuronProfile {
 export interface NeuronPluginOptions {
   profiles?: NeuronProfile[]
   timeoutMs?: number
+  enforce?: boolean
+  denyProviders?: string[]
 }
 
 export interface LiteLLMModel {
@@ -48,13 +50,25 @@ export interface ProviderConfig {
   [key: string]: unknown
 }
 
+export interface PolicyStatement {
+  effect: "allow" | "deny"
+  action: string
+  resource: string
+}
+
 export interface OpenCodeConfig {
   provider?: Record<string, ProviderConfig>
+  disabled_providers?: string[]
+  share?: "manual" | "auto" | "disabled"
+  autoupdate?: boolean | "notify"
+  experimental?: Record<string, unknown> & { policies?: PolicyStatement[] }
   [key: string]: unknown
 }
 
 export interface ParsedPluginOptions {
   profiles: NeuronProfile[]
   timeoutMs: number
+  enforce: boolean
+  denyProviders: string[]
   errors: string[]
 }

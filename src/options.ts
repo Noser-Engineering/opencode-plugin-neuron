@@ -91,7 +91,30 @@ export function parsePluginOptions(input?: Record<string, unknown>): ParsedPlugi
       ? Math.min(Math.max(Math.round(value.timeoutMs), 1_000), 30_000)
       : DEFAULT_TIMEOUT_MS
 
-  return { profiles, timeoutMs, errors }
+  // Only a literal false switches the compliance layer off. Anything else is a
+  // configuration mistake, and a mistake must not silently disable protection.
+  let enforce = true
+  if (value.enforce !== undefined) {
+    if (typeof value.enforce === "boolean") enforce = value.enforce
+    else errors.push("enforce must be a boolean; keeping the compliance layer enabled")
+  }
+
+  const denyProviders: string[] = []
+  if (value.denyProviders !== undefined) {
+    if (!Array.isArray(value.denyProviders)) errors.push("denyProviders must be an array")
+    else {
+      for (const [index, entry] of value.denyProviders.entries()) {
+        const id = typeof entry === "string" ? entry.trim() : ""
+        if (!PROVIDER_ID_PATTERN.test(id) || id.length > 64) {
+          errors.push(`denyProviders[${index}] must match ${PROVIDER_ID_PATTERN}`)
+          continue
+        }
+        denyProviders.push(id)
+      }
+    }
+  }
+
+  return { profiles, timeoutMs, enforce, denyProviders, errors }
 }
 
 export function slugifyProviderID(name: string): string {

@@ -1,9 +1,16 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { PROVIDER_NPM } from "./constants.js"
 import { readStoredApiCredentials, type StoredApiCredential } from "./auth.js"
+import { applyCompliance } from "./compliance.js"
 import { discoverModels, toModelConfig } from "./discovery.js"
 import { parsePluginOptions } from "./options.js"
-import type { LiteLLMModel, NeuronProfile, OpenCodeConfig, ProviderConfig } from "./types.js"
+import type {
+  LiteLLMModel,
+  NeuronProfile,
+  OpenCodeConfig,
+  ParsedPluginOptions,
+  ProviderConfig,
+} from "./types.js"
 
 type LogLevel = "debug" | "info" | "warn" | "error"
 
@@ -67,15 +74,17 @@ function ensureProvider(config: OpenCodeConfig, profile: NeuronProfile): Provide
   return provider
 }
 
-export async function enhanceConfig(
+/**
+ * Adds the configured profiles and their models to the config.
+ *
+ * Everything in here is convenience. It may fail, and it may return early;
+ * `enhanceConfig` applies the compliance layer either way.
+ */
+async function applyDiscovery(
   config: OpenCodeConfig,
-  rawOptions: Record<string, unknown> | undefined,
+  options: ParsedPluginOptions,
   dependencies: RuntimeDependencies,
 ): Promise<void> {
-  const options = parsePluginOptions(rawOptions)
-  for (const error of options.errors) {
-    await dependencies.log("warn", `Invalid Neuron plugin configuration: ${error}`)
-  }
   if (!options.profiles.length) return
 
   let storedCredentials: Record<string, StoredApiCredential> = {}
@@ -122,6 +131,42 @@ export async function enhanceConfig(
       }
     }),
   )
+}
+
+export async function enhanceConfig(
+  config: OpenCodeConfig,
+  rawOptions: Record<string, unknown> | undefined,
+  dependencies: RuntimeDependencies,
+): Promise<void> {
+  const options = parsePluginOptions(rawOptions)
+  for (const error of options.errors) {
+    await dependencies.log("warn", `Invalid Neuron plugin configuration: ${error}`)
+  }
+
+  // Discovery and compliance are kept apart on purpose. OpenCode swallows
+  // exceptions thrown out of the config hook (`Effect.ignore`), so a failure in
+  // one half would silently take the other half with it. Compliance runs in a
+  // finally block: after ensureProvider, so the plugin's own profiles count as
+  // declared, and regardless of how discovery ended, so a broken plugin
+  // configuration costs the user their models but never their protection.
+  try {
+    await applyDiscovery(config, options, dependencies)
+  } catch (error) {
+    await dependencies.log("error", "Neuron model discovery failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    try {
+      applyCompliance(config, { enforce: options.enforce, denyProviders: options.denyProviders })
+      if (!options.enforce) {
+        await dependencies.log("warn", "Neuron compliance layer is disabled via enforce: false")
+      }
+    } catch (error) {
+      await dependencies.log("error", "Neuron compliance layer could not be applied", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 }
 
 function createLogger(input: NeuronPluginInput): RuntimeDependencies["log"] {
