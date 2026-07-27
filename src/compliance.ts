@@ -85,6 +85,19 @@ export interface CompliancePolicy {
   denyProviders: string[]
 }
 
+/**
+ * What a previous call added to this config object.
+ *
+ * The `config` hook can run several times per process against one cumulative
+ * config, and the set of declared providers can grow between those calls. An
+ * entry generated earlier has to be retracted once its provider turns out to be
+ * declared, or the layer would keep blocking something the user asked for.
+ *
+ * Keyed by the config object so that entries the user wrote by hand are never
+ * mistaken for generated ones, and so that no state survives between tests.
+ */
+const generatedEntries = new WeakMap<OpenCodeConfig, { providers: string[]; policies: string[] }>()
+
 function uniqueStrings(values: Iterable<string>): string[] {
   return [...new Set(values)]
 }
@@ -136,13 +149,17 @@ export function applyCompliance(config: OpenCodeConfig, policy: CompliancePolicy
   if (!policy.enforce) return
 
   const denied = deniedProviderIDs(config, policy)
+  const deniedSet = new Set(denied)
+  const previous = generatedEntries.get(config)
 
+  const retracted = new Set((previous?.providers ?? []).filter((id) => !deniedSet.has(id)))
   const existingDisabled = Array.isArray(config.disabled_providers)
     ? config.disabled_providers.filter((entry): entry is string => typeof entry === "string")
     : []
-  config.disabled_providers = uniqueStrings([...existingDisabled, ...denied])
+  config.disabled_providers = uniqueStrings([...existingDisabled.filter((id) => !retracted.has(id)), ...denied])
 
-  applyPolicies(config, denied)
+  const policies = applyPolicies(config, denied, previous?.policies ?? [])
+  generatedEntries.set(config, { providers: denied, policies })
 
   // "disabled" is the strictest value; /share would publish the conversation
   // including code excerpts to opencode.ai, where a CDN caches it.
@@ -167,22 +184,31 @@ export function applyCompliance(config: OpenCodeConfig, policy: CompliancePolicy
  * The last matching statement wins (`findLast` in the policy service), so
  * generated statements go first and anything the user wrote stays after them.
  */
-function applyPolicies(config: OpenCodeConfig, denied: string[]): void {
+function applyPolicies(config: OpenCodeConfig, denied: string[], previousKeys: string[]): string[] {
   const generated: PolicyStatement[] = denied.map((id) => ({
     effect: "deny",
     action: "provider.use",
     resource: id,
   }))
+  const generatedKeys = generated.map(policyKey)
+  const currentKeys = new Set(generatedKeys)
+  const retracted = new Set(previousKeys.filter((key) => !currentKeys.has(key)))
 
   const experimental =
     config.experimental && typeof config.experimental === "object" && !Array.isArray(config.experimental)
       ? (config.experimental as Record<string, unknown>)
       : {}
   const existing = Array.isArray(experimental.policies) ? experimental.policies.filter(isPolicyStatement) : []
-  const generatedKeys = new Set(generated.map(policyKey))
 
   config.experimental = {
     ...experimental,
-    policies: [...generated, ...existing.filter((statement) => !generatedKeys.has(policyKey(statement)))],
+    policies: [
+      ...generated,
+      ...existing.filter((statement) => {
+        const key = policyKey(statement)
+        return !currentKeys.has(key) && !retracted.has(key)
+      }),
+    ],
   }
+  return generatedKeys
 }
