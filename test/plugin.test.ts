@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { enhanceConfig } from "../src/plugin.js"
+import { createDiscoveryCache, enhanceConfig } from "../src/plugin.js"
 import type { OpenCodeConfig } from "../src/types.js"
 
 describe("enhanceConfig", () => {
@@ -149,5 +149,80 @@ describe("enhanceConfig", () => {
     )
 
     expect(discover).not.toHaveBeenCalled()
+  })
+})
+
+describe("discovery cache", () => {
+  it("issues one request per profile no matter how often the hook runs", async () => {
+    const discover = vi.fn(async () => [{ id: "model" }])
+    const cache = createDiscoveryCache()
+    const options = {
+      profiles: [
+        { id: "proxy-a", name: "Proxy A", baseURL: "https://proxy.example/v1" },
+        { id: "proxy-b", name: "Proxy B", baseURL: "https://proxy.example/v1" },
+      ],
+    }
+    const dependencies = { discover, readCredentials: async () => ({}), log: async () => undefined, cache }
+
+    const config: OpenCodeConfig = {}
+    await enhanceConfig(config, options, dependencies)
+    await enhanceConfig(config, options, dependencies)
+    await enhanceConfig(config, options, dependencies)
+
+    expect(discover).toHaveBeenCalledTimes(2)
+    expect(config.provider?.["proxy-a"]?.models).toHaveProperty("model")
+  })
+
+  it("shares one in-flight request between concurrent hook calls", async () => {
+    let resolveDiscovery!: (models: Array<{ id: string }>) => void
+    const inFlight = new Promise<Array<{ id: string }>>((resolve) => {
+      resolveDiscovery = resolve
+    })
+    const discover = vi.fn(() => inFlight)
+    const cache = createDiscoveryCache()
+    const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
+    const dependencies = { discover, readCredentials: async () => ({}), log: async () => undefined, cache }
+
+    const first = enhanceConfig({}, options, dependencies)
+    const second = enhanceConfig({}, options, dependencies)
+    resolveDiscovery([{ id: "model" }])
+    await Promise.all([first, second])
+
+    expect(discover).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not serve a profile the models of the proxy it used to point at", async () => {
+    const discover = vi.fn(async (baseURL: string) => [{ id: baseURL }])
+    const cache = createDiscoveryCache()
+    const dependencies = { discover, readCredentials: async () => ({}), log: async () => undefined, cache }
+
+    const config: OpenCodeConfig = {}
+    await enhanceConfig(
+      config,
+      { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://old.example/v1" }] },
+      dependencies,
+    )
+    await enhanceConfig(
+      config,
+      { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://new.example/v1" }] },
+      dependencies,
+    )
+
+    expect(discover).toHaveBeenCalledTimes(2)
+    expect(config.provider?.neuron?.models).toHaveProperty("https://new.example/v1")
+  })
+
+  it("keeps a failure cached rather than retrying on every hook call", async () => {
+    const discover = vi.fn(async () => {
+      throw new Error("offline")
+    })
+    const cache = createDiscoveryCache()
+    const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
+    const dependencies = { discover, readCredentials: async () => ({}), log: async () => undefined, cache }
+
+    await enhanceConfig({}, options, dependencies)
+    await enhanceConfig({}, options, dependencies)
+
+    expect(discover).toHaveBeenCalledTimes(1)
   })
 })

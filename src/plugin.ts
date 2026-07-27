@@ -14,6 +14,21 @@ import type {
 
 type LogLevel = "debug" | "info" | "warn" | "error"
 
+/**
+ * Discovery results for the lifetime of the process, keyed by profile and URL.
+ *
+ * OpenCode calls the `config` hook more than once per process, and without this
+ * every call would fan out one HTTP request per profile. Holds the promise
+ * rather than the result so that concurrent calls share one request.
+ *
+ * Injected rather than module-global so tests get a fresh one for free.
+ */
+export type DiscoveryCache = Map<string, Promise<LiteLLMModel[]>>
+
+export function createDiscoveryCache(): DiscoveryCache {
+  return new Map()
+}
+
 interface RuntimeDependencies {
   discover: (
     baseURL: string,
@@ -22,6 +37,7 @@ interface RuntimeDependencies {
   ) => Promise<LiteLLMModel[]>
   readCredentials: () => Promise<Record<string, StoredApiCredential>>
   log: (level: LogLevel, message: string, extra?: Record<string, unknown>) => Promise<void>
+  cache?: DiscoveryCache
 }
 
 interface NeuronPluginInput {
@@ -74,6 +90,29 @@ function ensureProvider(config: OpenCodeConfig, profile: NeuronProfile): Provide
   return provider
 }
 
+function discoverOnce(
+  profile: NeuronProfile,
+  apiKey: string | undefined,
+  options: ParsedPluginOptions,
+  dependencies: RuntimeDependencies,
+): Promise<LiteLLMModel[]> {
+  const run = () => dependencies.discover(profile.baseURL!, apiKey, { timeoutMs: options.timeoutMs })
+  if (!dependencies.cache) return run()
+
+  // The URL is part of the key so that a profile pointed at a different proxy
+  // is not served the previous proxy's models.
+  const key = `${profile.id}|${profile.baseURL}`
+  const cached = dependencies.cache.get(key)
+  if (cached) return cached
+
+  // Failures are cached too. OpenCode only reads the config at startup, so
+  // retrying on a later hook call within the same process would cost requests
+  // without ever producing a usable model list.
+  const pending = run()
+  dependencies.cache.set(key, pending)
+  return pending
+}
+
 /**
  * Adds the configured profiles and their models to the config.
  *
@@ -110,9 +149,7 @@ async function applyDiscovery(
       const provider = ensureProvider(config, profile)
 
       try {
-        const discovered = await dependencies.discover(profile.baseURL!, credential.apiKey, {
-          timeoutMs: options.timeoutMs,
-        })
+        const discovered = await discoverOnce(profile, credential.apiKey, options, dependencies)
         provider.models ??= {}
         for (const model of discovered) {
           if (provider.models[model.id]) continue
@@ -187,12 +224,15 @@ function createLogger(input: NeuronPluginInput): RuntimeDependencies["log"] {
 }
 
 export const NeuronPlugin: NeuronPluginFunction = async (input, rawOptions) => {
+  // One cache per plugin load, so repeated hook calls share its entries.
+  const cache = createDiscoveryCache()
   return {
     config: async (config) => {
       await enhanceConfig(config as unknown as OpenCodeConfig, rawOptions, {
         discover: discoverModels,
         readCredentials: readStoredApiCredentials,
         log: createLogger(input),
+        cache,
       })
     },
   }
