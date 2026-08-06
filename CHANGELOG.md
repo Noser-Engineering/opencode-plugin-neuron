@@ -2,7 +2,7 @@
 
 ## 0.3.0
 
-### Renamed to `@noser/opencode-plugin-neuron`
+### Renamed to `@noser-engineering/opencode-plugin-neuron`
 
 The plugin now enforces one organization's provider policy, which is not
 something a neutrally named package should do to a stranger who installs it.
@@ -12,7 +12,7 @@ Update the `plugin` entry in `opencode.json`, or re-run the setup command,
 which migrates an existing unscoped entry in place:
 
 ```sh
-npx @noser/opencode-plugin-neuron setup --global
+npx @noser-engineering/opencode-plugin-neuron setup --global
 ```
 
 The unscoped `opencode-plugin-neuron` stops at 0.2.2.

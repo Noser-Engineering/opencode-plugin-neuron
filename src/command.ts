@@ -62,10 +62,10 @@ The API key can also be passed in ${API_KEY_ENV}, which avoids both the prompt
 and the command line.
 
 Examples:
-  npx @noser/opencode-plugin-neuron setup --global
-  npx @noser/opencode-plugin-neuron setup --global --name "Neuron Arbeit" \\
+  npx @noser-engineering/opencode-plugin-neuron setup --global
+  npx @noser-engineering/opencode-plugin-neuron setup --global --name "Neuron Arbeit" \\
     --url https://litellm.example.com/v1 --key sk-123
-  echo "$KEY" | npx @noser/opencode-plugin-neuron setup --global \\
+  echo "$KEY" | npx @noser-engineering/opencode-plugin-neuron setup --global \\
     --url https://litellm.example.com/v1 --key-stdin`
 }
 

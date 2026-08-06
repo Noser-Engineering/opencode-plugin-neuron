@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@noser/opencode-plugin-neuron",
+  "name": "@noser-engineering/opencode-plugin-neuron",
   "version": "0.3.0",
   "description": "OpenCode plugin that discovers models from configurable LiteLLM proxies with multi-profile support",
   "type": "module",
