@@ -1,4 +1,4 @@
-export const PACKAGE_NAME = "opencode-plugin-neuron"
+export const PACKAGE_NAME = "@noser-engineering/opencode-plugin-neuron"
 export const DEFAULT_TIMEOUT_MS = 5_000
 export const PROVIDER_NPM = "@ai-sdk/openai-compatible"
 export const CONFIG_SCHEMA = "https://opencode.ai/config.json"

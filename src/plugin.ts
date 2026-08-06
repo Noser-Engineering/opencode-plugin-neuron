@@ -1,11 +1,33 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { PROVIDER_NPM } from "./constants.js"
 import { readStoredApiCredentials, type StoredApiCredential } from "./auth.js"
+import { applyCompliance } from "./compliance.js"
 import { discoverModels, toModelConfig } from "./discovery.js"
 import { parsePluginOptions } from "./options.js"
-import type { LiteLLMModel, NeuronProfile, OpenCodeConfig, ProviderConfig } from "./types.js"
+import type {
+  LiteLLMModel,
+  NeuronProfile,
+  OpenCodeConfig,
+  ParsedPluginOptions,
+  ProviderConfig,
+} from "./types.js"
 
 type LogLevel = "debug" | "info" | "warn" | "error"
+
+/**
+ * Discovery results for the lifetime of the process, keyed by profile and URL.
+ *
+ * OpenCode calls the `config` hook more than once per process, and without this
+ * every call would fan out one HTTP request per profile. Holds the promise
+ * rather than the result so that concurrent calls share one request.
+ *
+ * Injected rather than module-global so tests get a fresh one for free.
+ */
+export type DiscoveryCache = Map<string, Promise<LiteLLMModel[]>>
+
+export function createDiscoveryCache(): DiscoveryCache {
+  return new Map()
+}
 
 interface RuntimeDependencies {
   discover: (
@@ -15,6 +37,7 @@ interface RuntimeDependencies {
   ) => Promise<LiteLLMModel[]>
   readCredentials: () => Promise<Record<string, StoredApiCredential>>
   log: (level: LogLevel, message: string, extra?: Record<string, unknown>) => Promise<void>
+  cache?: DiscoveryCache
 }
 
 interface NeuronPluginInput {
@@ -67,15 +90,40 @@ function ensureProvider(config: OpenCodeConfig, profile: NeuronProfile): Provide
   return provider
 }
 
-export async function enhanceConfig(
+function discoverOnce(
+  profile: NeuronProfile,
+  apiKey: string | undefined,
+  options: ParsedPluginOptions,
+  dependencies: RuntimeDependencies,
+): Promise<LiteLLMModel[]> {
+  const run = () => dependencies.discover(profile.baseURL!, apiKey, { timeoutMs: options.timeoutMs })
+  if (!dependencies.cache) return run()
+
+  // The URL is part of the key so that a profile pointed at a different proxy
+  // is not served the previous proxy's models.
+  const key = `${profile.id}|${profile.baseURL}`
+  const cached = dependencies.cache.get(key)
+  if (cached) return cached
+
+  // Failures are cached too. OpenCode only reads the config at startup, so
+  // retrying on a later hook call within the same process would cost requests
+  // without ever producing a usable model list.
+  const pending = run()
+  dependencies.cache.set(key, pending)
+  return pending
+}
+
+/**
+ * Adds the configured profiles and their models to the config.
+ *
+ * Everything in here is convenience. It may fail, and it may return early;
+ * `enhanceConfig` applies the compliance layer either way.
+ */
+async function applyDiscovery(
   config: OpenCodeConfig,
-  rawOptions: Record<string, unknown> | undefined,
+  options: ParsedPluginOptions,
   dependencies: RuntimeDependencies,
 ): Promise<void> {
-  const options = parsePluginOptions(rawOptions)
-  for (const error of options.errors) {
-    await dependencies.log("warn", `Invalid Neuron plugin configuration: ${error}`)
-  }
   if (!options.profiles.length) return
 
   let storedCredentials: Record<string, StoredApiCredential> = {}
@@ -101,9 +149,7 @@ export async function enhanceConfig(
       const provider = ensureProvider(config, profile)
 
       try {
-        const discovered = await dependencies.discover(profile.baseURL!, credential.apiKey, {
-          timeoutMs: options.timeoutMs,
-        })
+        const discovered = await discoverOnce(profile, credential.apiKey, options, dependencies)
         provider.models ??= {}
         for (const model of discovered) {
           if (provider.models[model.id]) continue
@@ -124,6 +170,42 @@ export async function enhanceConfig(
   )
 }
 
+export async function enhanceConfig(
+  config: OpenCodeConfig,
+  rawOptions: Record<string, unknown> | undefined,
+  dependencies: RuntimeDependencies,
+): Promise<void> {
+  const options = parsePluginOptions(rawOptions)
+  for (const error of options.errors) {
+    await dependencies.log("warn", `Invalid Neuron plugin configuration: ${error}`)
+  }
+
+  // Discovery and compliance are kept apart on purpose. OpenCode swallows
+  // exceptions thrown out of the config hook (`Effect.ignore`), so a failure in
+  // one half would silently take the other half with it. Compliance runs in a
+  // finally block: after ensureProvider, so the plugin's own profiles count as
+  // declared, and regardless of how discovery ended, so a broken plugin
+  // configuration costs the user their models but never their protection.
+  try {
+    await applyDiscovery(config, options, dependencies)
+  } catch (error) {
+    await dependencies.log("error", "Neuron model discovery failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    try {
+      applyCompliance(config, { enforce: options.enforce, denyProviders: options.denyProviders })
+      if (!options.enforce) {
+        await dependencies.log("warn", "Neuron compliance layer is disabled via enforce: false")
+      }
+    } catch (error) {
+      await dependencies.log("error", "Neuron compliance layer could not be applied", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+}
+
 function createLogger(input: NeuronPluginInput): RuntimeDependencies["log"] {
   return async (level, message, extra) => {
     try {
@@ -142,12 +224,15 @@ function createLogger(input: NeuronPluginInput): RuntimeDependencies["log"] {
 }
 
 export const NeuronPlugin: NeuronPluginFunction = async (input, rawOptions) => {
+  // One cache per plugin load, so repeated hook calls share its entries.
+  const cache = createDiscoveryCache()
   return {
     config: async (config) => {
       await enhanceConfig(config as unknown as OpenCodeConfig, rawOptions, {
         discover: discoverModels,
         readCredentials: readStoredApiCredentials,
         log: createLogger(input),
+        cache,
       })
     },
   }

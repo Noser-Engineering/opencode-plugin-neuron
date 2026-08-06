@@ -19,7 +19,7 @@ describe("OpenCode config setup", () => {
     expect(config.plugin).toEqual([
       "opencode-wakatime",
       [
-        "opencode-plugin-neuron",
+        "@noser-engineering/opencode-plugin-neuron",
         {
           profiles: [{ id: "work", name: "Work", baseURL: "https://proxy.example/v1" }],
         },
@@ -31,7 +31,7 @@ describe("OpenCode config setup", () => {
     const original = JSON.stringify({
       plugin: [
         [
-          "opencode-plugin-neuron@1.2.3",
+          "@noser-engineering/opencode-plugin-neuron@1.2.3",
           { timeoutMs: 10_000, profiles: [{ id: "old", name: "Old", baseURL: "https://old.example/v1" }] },
         ],
       ],
@@ -42,7 +42,7 @@ describe("OpenCode config setup", () => {
     const entry = readNeuronConfigEntry(parseConfigText(updated))
 
     expect(entry).toEqual({
-      packageSpec: "opencode-plugin-neuron@1.2.3",
+      packageSpec: "@noser-engineering/opencode-plugin-neuron@1.2.3",
       rawOptions: {
         timeoutMs: 10_000,
         profiles: [
@@ -63,11 +63,11 @@ describe("OpenCode config setup", () => {
     })
   })
 
-  it("migrates the former private package name", () => {
+  it("migrates the former unscoped package name", () => {
     const original = JSON.stringify({
       plugin: [
         [
-          "@noser/opencode-plugin-neuron",
+          "opencode-plugin-neuron",
           {
             profiles: [
               { id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1", apiKeyEnv: "OLD_KEY" },
@@ -83,7 +83,7 @@ describe("OpenCode config setup", () => {
 
     expect(updated.plugin).toEqual([
       [
-        "opencode-plugin-neuron",
+        "@noser-engineering/opencode-plugin-neuron",
         {
           profiles: [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }],
         },

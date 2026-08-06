@@ -14,7 +14,9 @@ export interface NeuronConfigEntry {
   packageSpec: string
 }
 
-const LEGACY_PACKAGE_NAMES = ["@noser/opencode-plugin-neuron"]
+// Recognized so an existing entry is migrated to the current name instead of
+// being duplicated. "opencode-plugin-neuron" was the unscoped name up to 0.2.2.
+const LEGACY_PACKAGE_NAMES = ["opencode-plugin-neuron"]
 
 async function exists(filePath: string): Promise<boolean> {
   try {

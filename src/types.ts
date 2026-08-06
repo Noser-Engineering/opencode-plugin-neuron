@@ -7,8 +7,15 @@ export interface NeuronProfile {
 export interface NeuronPluginOptions {
   profiles?: NeuronProfile[]
   timeoutMs?: number
+  enforce?: boolean
+  denyProviders?: string[]
 }
 
+/**
+ * A model as the plugin understands it, normalized from either discovery
+ * endpoint. Costs are already converted to OpenCode's unit; the wire fields
+ * `input_cost_per_token` and `output_cost_per_token` do not survive parsing.
+ */
 export interface LiteLLMModel {
   id: string
   object?: string
@@ -21,6 +28,10 @@ export interface LiteLLMModel {
   max_output_tokens?: number
   supports_function_calling?: boolean
   supports_vision?: boolean
+  supports_reasoning?: boolean
+  supports_pdf_input?: boolean
+  input_cost_per_million?: number
+  output_cost_per_million?: number
 }
 
 export interface ModelConfig {
@@ -28,12 +39,17 @@ export interface ModelConfig {
   attachment?: boolean
   reasoning?: boolean
   tool_call?: boolean
+  /** Per million tokens, matching OpenCode's own unit. */
+  cost?: {
+    input: number
+    output: number
+  }
   limit?: {
     context: number
     output: number
   }
   modalities?: {
-    input?: Array<"text" | "image">
+    input?: Array<"text" | "image" | "pdf">
     output?: Array<"text">
   }
   [key: string]: unknown
@@ -48,13 +64,25 @@ export interface ProviderConfig {
   [key: string]: unknown
 }
 
+export interface PolicyStatement {
+  effect: "allow" | "deny"
+  action: string
+  resource: string
+}
+
 export interface OpenCodeConfig {
   provider?: Record<string, ProviderConfig>
+  disabled_providers?: string[]
+  share?: "manual" | "auto" | "disabled"
+  autoupdate?: boolean | "notify"
+  experimental?: Record<string, unknown> & { policies?: PolicyStatement[] }
   [key: string]: unknown
 }
 
 export interface ParsedPluginOptions {
   profiles: NeuronProfile[]
   timeoutMs: number
+  enforce: boolean
+  denyProviders: string[]
   errors: string[]
 }
