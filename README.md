@@ -130,13 +130,13 @@ Alongside that, the plugin sets:
 | `share` | `"disabled"` | `/share` publishes the conversation including code excerpts to opencode.ai, where a CDN caches it |
 | `autoupdate` | `"notify"` | an unattended update can introduce a new preconfigured provider. An existing `false` is stricter and is left alone |
 | `disabled_providers` | the block list | entries already present are kept |
-| `experimental.policies` | `deny provider.use` per blocked provider | see the limitation below |
 
 ### What this does not cover
 
 - **The block list cannot be complete.** All 172 providers in the models.dev catalog load from an environment variable, and an OpenCode release can add more. The list covers the mainstream vendors, hyperscalers, developer platforms and gateways; a credential for something outside it is still picked up. Extend the list with `denyProviders`.
-- **`experimental.policies` has no effect on OpenCode 1.18.4.** Policy evaluation lives in the v2 catalog, which that release does not use to resolve providers. `disabled_providers` is what enforces the block today; the policies are written so the intent is already expressed in the mechanism OpenCode is moving towards. `scripts/verify-protection.sh` reports which of the two the installed OpenCode honors.
 - **Deliberate misuse is out of scope.** Anyone can declare a provider, or set `enforce: false`.
+
+The plugin used to also mirror the block list into `experimental.policies`. That statement shape is inert on OpenCode 1.18.4 for provider resolution, and worse, that release's `GET /config` response fails to validate it — the TUI calls that endpoint on startup and crashes with `Expected ConfigV2.Experimental.Policy, got {...}`. 0.3.1 stops writing it; `disabled_providers` is the only enforcement mechanism.
 
 ### Options
 

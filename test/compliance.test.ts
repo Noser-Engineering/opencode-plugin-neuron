@@ -66,29 +66,12 @@ describe("applyCompliance", () => {
     expect(config.disabled_providers).not.toContain("customer-account")
   })
 
-  it("mirrors the block list into experimental.policies", () => {
-    const config: OpenCodeConfig = { provider: { neuron: {} } }
+  it("leaves experimental config alone", () => {
+    const config: OpenCodeConfig = { experimental: { chatMaxRetries: 3 } }
 
     applyCompliance(config, ENFORCED)
 
-    expect(config.experimental?.policies).toContainEqual({
-      effect: "deny",
-      action: "provider.use",
-      resource: "anthropic",
-    })
-    expect(config.experimental?.policies?.map((statement) => statement.resource)).not.toContain("neuron")
-  })
-
-  it("keeps user policies and puts them after the generated ones", () => {
-    const userPolicy = { effect: "allow", action: "provider.use", resource: "anthropic" } as const
-    const config: OpenCodeConfig = { experimental: { policies: [userPolicy], chatMaxRetries: 3 } }
-
-    applyCompliance(config, ENFORCED)
-
-    const policies = config.experimental?.policies ?? []
-    expect(policies.at(-1)).toEqual(userPolicy)
-    expect(policies.findIndex((statement) => statement.effect === "deny")).toBeLessThan(policies.length - 1)
-    expect(config.experimental?.chatMaxRetries).toBe(3)
+    expect(config.experimental).toEqual({ chatMaxRetries: 3 })
   })
 
   it("produces no duplicates when called twice", () => {
@@ -109,9 +92,8 @@ describe("applyCompliance", () => {
     config.provider = { anthropic: {} }
     applyCompliance(config, ENFORCED)
 
-    const policies = config.experimental?.policies ?? []
-    expect(policies.filter((statement) => statement.resource === "anthropic")).toHaveLength(0)
-    expect(new Set(policies.map((statement) => statement.resource)).size).toBe(policies.length)
+    expect(config.disabled_providers).not.toContain("anthropic")
+    expect(new Set(config.disabled_providers).size).toBe(config.disabled_providers?.length)
   })
 
   it("disables sharing and downgrades autoupdate", () => {

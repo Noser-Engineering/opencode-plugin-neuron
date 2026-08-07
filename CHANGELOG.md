@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.1
+
+### Fixed: the plugin crashed OpenCode's TUI on startup
+
+`experimental.policies` was mirrored from the block list on every `config`
+hook call. On OpenCode 1.18.4 that statement shape fails the `GET /config`
+response schema (`Expected ConfigV2.Experimental.Policy, got {...}`), and
+since the TUI calls that endpoint on startup, every install of 0.3.0 crashed
+before showing a prompt.
+
+The feature was already documented as inert for provider resolution on
+1.18.4; 0.3.1 stops writing it. `disabled_providers` remains the only
+enforcement mechanism.
+
+**If you already hit this crash**, fixing the plugin's own code is not
+enough by itself: OpenCode caches an installed plugin package under
+`~/.cache/opencode/packages/` and does not refetch it just because a newer
+version is on npm. After upgrading, clear the cached copy once:
+
+```sh
+rm -rf ~/.cache/opencode/packages/@noser-engineering/opencode-plugin-neuron*
+```
+
 ## 0.3.0
 
 ### Renamed to `@noser-engineering/opencode-plugin-neuron`

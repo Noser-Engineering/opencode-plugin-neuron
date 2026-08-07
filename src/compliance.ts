@@ -1,4 +1,4 @@
-import type { OpenCodeConfig, PolicyStatement } from "./types.js"
+import type { OpenCodeConfig } from "./types.js"
 
 /**
  * Providers OpenCode loads on its own as soon as a credential or environment
@@ -96,24 +96,10 @@ export interface CompliancePolicy {
  * Keyed by the config object so that entries the user wrote by hand are never
  * mistaken for generated ones, and so that no state survives between tests.
  */
-const generatedEntries = new WeakMap<OpenCodeConfig, { providers: string[]; policies: string[] }>()
+const generatedEntries = new WeakMap<OpenCodeConfig, { providers: string[] }>()
 
 function uniqueStrings(values: Iterable<string>): string[] {
   return [...new Set(values)]
-}
-
-function policyKey(statement: PolicyStatement): string {
-  return `${statement.effect}|${statement.action}|${statement.resource}`
-}
-
-function isPolicyStatement(value: unknown): value is PolicyStatement {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.action === "string" &&
-    typeof candidate.resource === "string" &&
-    (candidate.effect === "allow" || candidate.effect === "deny")
-  )
 }
 
 /**
@@ -157,9 +143,7 @@ export function applyCompliance(config: OpenCodeConfig, policy: CompliancePolicy
     ? config.disabled_providers.filter((entry): entry is string => typeof entry === "string")
     : []
   config.disabled_providers = uniqueStrings([...existingDisabled.filter((id) => !retracted.has(id)), ...denied])
-
-  const policies = applyPolicies(config, denied, previous?.policies ?? [])
-  generatedEntries.set(config, { providers: denied, policies })
+  generatedEntries.set(config, { providers: denied })
 
   // "disabled" is the strictest value; /share would publish the conversation
   // including code excerpts to opencode.ai, where a CDN caches it.
@@ -168,47 +152,4 @@ export function applyCompliance(config: OpenCodeConfig, policy: CompliancePolicy
   // An automatic update can introduce a new preconfigured provider without
   // anyone looking at it. `false` is stricter than "notify", so keep it.
   if (config.autoupdate !== false) config.autoupdate = "notify"
-}
-
-/**
- * Mirrors the denylist into `experimental.policies`.
- *
- * Inert on OpenCode 1.18.4: policy evaluation lives in the v2 catalog
- * (`CatalogV2.finalize` → `@opencode/v2/Policy`), which that release does not
- * use for provider resolution — verified by observing that a `deny provider.use
- * *` statement leaves `opencode models` unchanged. `disabled_providers` above is
- * what actually enforces the rule today; this keeps the same intent expressed in
- * the mechanism OpenCode is moving towards. Covered by an integration test so a
- * future release flipping the switch does not go unnoticed.
- *
- * The last matching statement wins (`findLast` in the policy service), so
- * generated statements go first and anything the user wrote stays after them.
- */
-function applyPolicies(config: OpenCodeConfig, denied: string[], previousKeys: string[]): string[] {
-  const generated: PolicyStatement[] = denied.map((id) => ({
-    effect: "deny",
-    action: "provider.use",
-    resource: id,
-  }))
-  const generatedKeys = generated.map(policyKey)
-  const currentKeys = new Set(generatedKeys)
-  const retracted = new Set(previousKeys.filter((key) => !currentKeys.has(key)))
-
-  const experimental =
-    config.experimental && typeof config.experimental === "object" && !Array.isArray(config.experimental)
-      ? (config.experimental as Record<string, unknown>)
-      : {}
-  const existing = Array.isArray(experimental.policies) ? experimental.policies.filter(isPolicyStatement) : []
-
-  config.experimental = {
-    ...experimental,
-    policies: [
-      ...generated,
-      ...existing.filter((statement) => {
-        const key = policyKey(statement)
-        return !currentKeys.has(key) && !retracted.has(key)
-      }),
-    ],
-  }
-  return generatedKeys
 }

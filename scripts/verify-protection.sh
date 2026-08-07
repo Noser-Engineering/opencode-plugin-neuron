@@ -150,12 +150,8 @@ node -e '
   for (const id of ["anthropic", "opencode", "github-copilot"]) {
     if (!disabled.includes(id)) problems.push(`disabled_providers is missing ${id}`)
   }
-  const policies = config.experimental?.policies ?? []
-  if (!policies.some((p) => p.effect === "deny" && p.action === "provider.use" && p.resource === "anthropic")) {
-    problems.push("experimental.policies is missing the deny statement for anthropic")
-  }
   for (const problem of problems) console.log(`FAIL ${problem}`)
-  if (!problems.length) console.log("OK resolved config carries share, autoupdate, disabled_providers and policies")
+  if (!problems.length) console.log("OK resolved config carries share, autoupdate and disabled_providers")
 ' <<<"$resolved" >"$WORKSPACE/resolved-report"
 while IFS= read -r line; do
   case "$line" in
@@ -163,22 +159,6 @@ while IFS= read -r line; do
     OK*) pass "${line#OK }" ;;
   esac
 done <"$WORKSPACE/resolved-report"
-
-# ---------------------------------------------------------------------------
-# 5. Policies are written for a future OpenCode. Report whether that release
-#    enforces them yet. Informational: this is not a failure today.
-# ---------------------------------------------------------------------------
-echo "case: experimental.policies enforcement"
-policy_config='{"$schema":"https://opencode.ai/config.json","experimental":{"policies":[{"effect":"deny","action":"provider.use","resource":"*"}]}}'
-policy_dir="$(make_case policies "$policy_config")"
-rm -rf "$policy_dir/.opencode"
-if grep -q '^anthropic/' <<<"$(run_models "$policy_dir")"; then
-  echo "  note: opencode $OPENCODE_VERSION ignores experimental.policies for provider resolution;"
-  echo "        disabled_providers is what enforces the layer. Unchanged since 1.18.4."
-else
-  echo "  note: opencode $OPENCODE_VERSION DOES enforce experimental.policies."
-  echo "        Reconsider whether disabled_providers is still the right mechanism."
-fi
 
 echo
 if ((failures)); then
