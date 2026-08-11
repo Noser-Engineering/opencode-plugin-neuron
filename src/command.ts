@@ -226,6 +226,19 @@ function reusableStoredKey(state: SetupState, providerID: string, baseURL: strin
   return stored && stored.baseURL === baseURL ? stored.key : undefined
 }
 
+// `fetch failed` from Node/undici hides the real reason (DNS, TLS, proxy,
+// refused connection) one level down in `.cause`, sometimes nested further.
+function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  const parts = [error.message]
+  let cause = error.cause
+  while (cause) {
+    parts.push(cause instanceof Error ? cause.message : String(cause))
+    cause = cause instanceof Error ? cause.cause : undefined
+  }
+  return parts.join(" -> ")
+}
+
 async function testConnection(
   profile: NeuronProfile,
   apiKey: string | undefined,
@@ -237,7 +250,7 @@ async function testConnection(
     process.stdout.write(`[ok] ${models.length} model${models.length === 1 ? "" : "s"} available to this key.\n`)
     return true
   } catch (error) {
-    process.stdout.write(`[error] ${error instanceof Error ? error.message : String(error)}\n`)
+    process.stdout.write(`[error] ${describeError(error)}\n`)
     return false
   }
 }
