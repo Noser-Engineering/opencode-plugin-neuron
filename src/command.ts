@@ -38,7 +38,7 @@ export interface ApiKeySource {
 }
 
 /** The part of {@link Prompts} the profile flow uses, so tests can drive it. */
-export type PromptPort = Pick<Prompts, "text" | "secret" | "confirm">
+export type PromptPort = Pick<Prompts, "text" | "secret" | "confirm" | "select">
 
 export type DiscoverModels = typeof discoverModels
 
@@ -46,8 +46,9 @@ export function usage(): string {
   return `opencode-neuron setup [options]
 
 Adds one or more named LiteLLM profiles to OpenCode. Without --url the setup is
-interactive; every flag that is given skips its own question. Passing --url runs
-without any prompt and therefore requires --global or --project.
+interactive; every flag that is given skips its own question. Passing --url skips
+every other prompt; if --global or --project is missing, it is still asked (unless
+--key-stdin is used, which requires it upfront since stdin is already spoken for).
 
 Options:
   --global         Write the global OpenCode config
@@ -132,8 +133,8 @@ export function parseArgs(argv: string[]): CliArgs {
   // Both restrictions keep the non-interactive mode free of hidden prompts: the
   // scope would have to be asked for, and reading stdin leaves nothing for the
   // prompts to read from.
-  if (args.url && !args.scope) throw new Error("--url requires --global or --project")
   if (args.keyStdin && !args.url) throw new Error("--key-stdin requires --url")
+  if (args.keyStdin && !args.scope) throw new Error("--key-stdin requires --global or --project")
   return args
 }
 
@@ -263,7 +264,21 @@ function parseBaseURL(input: string, flag: string): string {
   }
 }
 
+async function promptScope(prompts: PromptPort): Promise<ConfigScope> {
+  return (await prompts.select("Where should the profile be configured?", ["Global config", "Current project"])) === 0
+    ? "global"
+    : "project"
+}
+
 async function runNonInteractive(args: CliArgs, apiKey: ApiKeySource): Promise<void> {
+  if (!args.scope) {
+    const prompts = new Prompts()
+    try {
+      args.scope = await promptScope(prompts)
+    } finally {
+      prompts.close()
+    }
+  }
   const state = await loadState(args.scope!)
   const name = args.name ?? defaultProfileName(state.profiles)
   const providerID = slugifyProviderID(name)
@@ -338,11 +353,7 @@ export async function configureProfile(
 async function runInteractive(args: CliArgs, apiKey: ApiKeySource): Promise<void> {
   const prompts = new Prompts()
   try {
-    const scope =
-      args.scope ??
-      ((await prompts.select("Where should the profile be configured?", ["Global config", "Current project"])) === 0
-        ? "global"
-        : "project")
+    const scope = args.scope ?? (await promptScope(prompts))
     const state = await loadState(scope)
 
     process.stdout.write(`\nConfig: ${state.configPath}\n`)

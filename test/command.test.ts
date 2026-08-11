@@ -31,6 +31,11 @@ class FakePrompts {
     this.asked.push(message)
     return this.confirms.shift() ?? defaultValue
   }
+
+  async select(message: string, _options: string[], defaultIndex = 0): Promise<number> {
+    this.asked.push(message)
+    return defaultIndex
+  }
 }
 
 function emptyState(): SetupState {
@@ -69,13 +74,21 @@ describe("parseArgs", () => {
     expect(parseArgs(["--name", "Neuron"])).toEqual({ help: false, keyStdin: false, name: "Neuron" })
   })
 
-  it("requires an explicit scope for the non-interactive mode", () => {
-    expect(() => parseArgs(["--url", "https://p.example/v1"])).toThrow("--url requires --global or --project")
+  it("leaves the scope unset when --url is given without --global or --project", () => {
+    const args = parseArgs(["--url", "https://p.example/v1"])
+    expect(args.scope).toBeUndefined()
+    expect(args.url).toBe("https://p.example/v1")
   })
 
   it("only allows --key-stdin together with --url", () => {
     expect(() => parseArgs(["--global", "--key-stdin"])).toThrow("--key-stdin requires --url")
     expect(parseArgs(["--global", "--url", "https://p.example/v1", "--key-stdin"])).toMatchObject({ keyStdin: true })
+  })
+
+  it("requires an explicit scope when --key-stdin is used", () => {
+    expect(() => parseArgs(["--url", "https://p.example/v1", "--key-stdin"])).toThrow(
+      "--key-stdin requires --global or --project",
+    )
   })
 
   it("rejects contradicting and malformed input", () => {
