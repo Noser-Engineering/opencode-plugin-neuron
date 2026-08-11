@@ -39,7 +39,7 @@ Every flag skips its own question, so `npx @noser-engineering/opencode-plugin-ne
 | `--url <url>` | The LiteLLM proxy URL |
 | `--key <key>`, `--key-stdin` | The API key |
 
-Passing `--url` runs the whole setup without a single prompt, which is what onboarding instructions and scripts want. It then requires `--global` or `--project`, because the scope cannot be guessed:
+Passing `--url` runs the whole setup without a single prompt, which is what onboarding instructions and scripts want. It still asks where to write the config if `--global`/`--project` is omitted, since the scope cannot be guessed:
 
 ```sh
 npx @noser-engineering/opencode-plugin-neuron setup --global \
@@ -57,7 +57,8 @@ In this mode an existing profile of the same ID is updated without asking, so th
 `--key` puts the key into the shell history and makes it visible to other users through the process list. Two alternatives avoid that:
 
 ```sh
-# Read the key from stdin (requires --url)
+# Read the key from stdin (requires --url and --global/--project up front,
+# since stdin is already spoken for and can't also answer a scope prompt)
 echo "$KEY" | npx @noser-engineering/opencode-plugin-neuron setup --global \
   --url https://litellm.example.com/v1 --key-stdin
 

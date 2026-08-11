@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4
+
+### Changed: `setup --url` asks for the scope instead of erroring
+
+Previously, non-interactive setup (`--url` without a prompt) required
+`--global` or `--project` up front and refused to run otherwise. Now it asks
+which one to use if it's missing, same as the interactive flow. `--key-stdin`
+still requires the scope explicitly, since it consumes stdin for the key
+before any prompt could use it.
+
 ## 0.3.1
 
 ### Fixed: the plugin crashed OpenCode's TUI on startup
