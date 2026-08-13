@@ -34,14 +34,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" \
+          gh release create "$GITHUB_REF_NAME" \
             release-binaries/opencode-neuron-linux-x64 \
             release-binaries/opencode-neuron-linux-arm64 \
             release-binaries/opencode-neuron-darwin-x64 \
             release-binaries/opencode-neuron-darwin-arm64 \
             release-binaries/opencode-neuron-windows-x64.exe \
             release-binaries/opencode-neuron-windows-arm64.exe \
-            --title "${{ github.ref_name }}" \
+            --title "$GITHUB_REF_NAME" \
             --generate-notes
 
       - name: Update Scoop manifest
