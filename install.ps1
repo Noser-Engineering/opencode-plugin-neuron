@@ -19,7 +19,9 @@ $targetPath = Join-Path $installDir "opencode-neuron.exe"
 
 Write-Host "==> downloading $asset"
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Invoke-WebRequest -Uri $url -OutFile $targetPath
+$tmpPath = "$targetPath.tmp"
+Invoke-WebRequest -Uri $url -OutFile $tmpPath
+Move-Item -Force -Path $tmpPath -Destination $targetPath
 
 Write-Host "==> installed to $targetPath"
 

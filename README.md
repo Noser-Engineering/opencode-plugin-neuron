@@ -37,6 +37,8 @@ scoop install opencode-neuron/opencode-neuron
 
 Then run `opencode-neuron setup` instead of the `npx ...` form in every example below.
 
+To update a binary install, re-run the same install command (or `scoop update opencode-neuron` for Scoop users).
+
 The setup asks for:
 
 - Global or project-level configuration
@@ -239,7 +241,7 @@ The GitHub mirror (`https://github.com/Noser-Engineering/opencode-plugin-neuron`
 git push github main --tags
 ```
 
-(`github` is a manually-added remote — see the Release Runbook in the standalone-binaries plan if it isn't set up yet.) That publishes a GitHub Release with binaries for `install.sh`/`install.ps1` to fetch. `npm publish` stays a separate, manual step.
+(`github` is a manually-added remote; if it isn't set up yet, add it once with `git remote add github https://github.com/Noser-Engineering/opencode-plugin-neuron.git`.) That publishes a GitHub Release with binaries for `install.sh`/`install.ps1` to fetch. `npm publish` stays a separate, manual step.
 
 ## License
 
