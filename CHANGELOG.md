@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.5
 
 ### Added: standalone binaries as a Node-free install option
 
