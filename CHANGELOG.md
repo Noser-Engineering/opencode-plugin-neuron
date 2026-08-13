@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added: standalone binaries as a Node-free install option
+
+`install.sh` / `install.ps1` fetch a self-contained binary from GitHub
+Releases, for people who don't have Node.js/npm. `npx` remains the primary,
+documented install path.
+
 ## 0.3.4
 
 ### Changed: `setup --url` asks for the scope instead of erroring

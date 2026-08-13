@@ -16,6 +16,27 @@ Run the interactive setup command:
 npx @noser-engineering/opencode-plugin-neuron setup
 ```
 
+Don't have Node.js? Install a standalone binary instead — no Node/npm required:
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Noser-Engineering/opencode-plugin-neuron/main/install.sh | sh
+```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Noser-Engineering/opencode-plugin-neuron/main/install.ps1 | iex
+```
+
+Windows users with [Scoop](https://scoop.sh) can use it as a bucket instead:
+
+```powershell
+scoop bucket add opencode-neuron https://github.com/Noser-Engineering/opencode-plugin-neuron
+scoop install opencode-neuron/opencode-neuron
+```
+
+Then run `opencode-neuron setup` instead of the `npx ...` form in every example below.
+
 The setup asks for:
 
 - Global or project-level configuration
@@ -209,6 +230,16 @@ npm package versions are immutable. Increment the version before every later pub
 npm version patch
 npm publish
 ```
+
+### Publishing standalone binaries
+
+The GitHub mirror (`https://github.com/Noser-Engineering/opencode-plugin-neuron`) is not auto-synced from Azure DevOps. After tagging a release here, push it there too to trigger the binary build:
+
+```sh
+git push github main --tags
+```
+
+(`github` is a manually-added remote — see the Release Runbook in the standalone-binaries plan if it isn't set up yet.) That publishes a GitHub Release with binaries for `install.sh`/`install.ps1` to fetch. `npm publish` stays a separate, manual step.
 
 ## License
 
