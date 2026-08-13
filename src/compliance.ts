@@ -1,4 +1,4 @@
-import type { OpenCodeConfig } from "./types.js"
+import type { OpenCodeConfig, PermissionCategory, PermissionConfig, PermissionRule } from "./types.js"
 
 /**
  * Providers OpenCode loads on its own as soon as a credential or environment
@@ -80,6 +80,101 @@ export const AUTOLOADED_PROVIDERS: readonly string[] = [
   "lmstudio",
 ]
 
+/**
+ * Baseline tool permissions for the agent: keep it out of secrets by default,
+ * let read-only inspection through without asking, and require confirmation
+ * for anything that changes state or leaves the machine.
+ *
+ * Fixed here rather than exposed as a plugin option, deliberately: this is a
+ * Noser-wide baseline, not something a project should individually tune down.
+ */
+export const DEFAULT_PERMISSION_POLICY: PermissionConfig = {
+  "*": "ask",
+  read: {
+    "**/.env": "deny",
+    "**/.env.*": "deny",
+    "**/.npmrc": "deny",
+    "**/.pypirc": "deny",
+    "**/credentials": "deny",
+    "**/credentials.json": "deny",
+    "**/id_rsa": "deny",
+    "**/id_ed25519": "deny",
+    "**/*_rsa": "deny",
+    "**/*_ed25519": "deny",
+    "*": "allow",
+  },
+  edit: {
+    "**/.env": "deny",
+    "**/.env.*": "deny",
+    "**/.npmrc": "deny",
+    "**/.pypirc": "deny",
+    "*": "ask",
+  },
+  bash: {
+    "*": "ask",
+    "ls *": "allow",
+    "pwd": "allow",
+    "git status*": "allow",
+    "git diff*": "allow",
+    "git log*": "allow",
+    "git show*": "allow",
+    "rg *": "allow",
+    "grep *": "allow",
+    "find *": "allow",
+    "npm test*": "allow",
+    "npm run test*": "allow",
+    "pnpm test*": "allow",
+    "pnpm run test*": "allow",
+    "rm *": "ask",
+    "rmdir *": "ask",
+    "git push*": "ask",
+    "git checkout*": "ask",
+    "curl *": "ask",
+    "wget *": "ask",
+  },
+}
+
+const PERMISSION_CATEGORIES = ["read", "edit", "bash"] as const
+
+/**
+ * Fills in a category's default patterns, without touching a pattern the user
+ * already set — including to a different rule than ours. A category the user
+ * set as a plain blanket rule (e.g. `edit: "allow"`) is left untouched
+ * entirely: expanding it into per-pattern rules would change behavior nobody
+ * asked for.
+ */
+function mergePermissionCategory(
+  existing: PermissionRule | PermissionCategory | undefined,
+  defaults: PermissionCategory,
+): PermissionRule | PermissionCategory {
+  if (typeof existing === "string") return existing
+  const merged: PermissionCategory = { ...existing }
+  for (const [pattern, rule] of Object.entries(defaults)) {
+    if (!(pattern in merged)) merged[pattern] = rule
+  }
+  return merged
+}
+
+/**
+ * Adds the baseline permission policy to whatever the user already has,
+ * filling in only what is missing. Safe to call repeatedly: once every
+ * default pattern exists, a later call finds nothing left to add.
+ */
+export function applyPermissionPolicy(config: OpenCodeConfig, policy: PermissionConfig): void {
+  const existing = config.permission ?? {}
+  const merged: PermissionConfig = { ...existing }
+
+  if (existing["*"] === undefined && policy["*"] !== undefined) merged["*"] = policy["*"]
+
+  for (const category of PERMISSION_CATEGORIES) {
+    const defaults = policy[category]
+    if (!defaults || typeof defaults === "string") continue
+    merged[category] = mergePermissionCategory(existing[category], defaults)
+  }
+
+  config.permission = merged
+}
+
 export interface CompliancePolicy {
   enforce: boolean
   denyProviders: string[]
@@ -152,4 +247,6 @@ export function applyCompliance(config: OpenCodeConfig, policy: CompliancePolicy
   // An automatic update can introduce a new preconfigured provider without
   // anyone looking at it. `false` is stricter than "notify", so keep it.
   if (config.autoupdate !== false) config.autoupdate = "notify"
+
+  applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
 }

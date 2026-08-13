@@ -64,11 +64,25 @@ export interface ProviderConfig {
   [key: string]: unknown
 }
 
+export type PermissionRule = "ask" | "allow" | "deny"
+
+/** A category's rules, keyed by the glob/command pattern OpenCode matches against. */
+export type PermissionCategory = Record<string, PermissionRule>
+
+export interface PermissionConfig {
+  "*"?: PermissionRule
+  read?: PermissionRule | PermissionCategory
+  edit?: PermissionRule | PermissionCategory
+  bash?: PermissionRule | PermissionCategory
+  [key: string]: unknown
+}
+
 export interface OpenCodeConfig {
   provider?: Record<string, ProviderConfig>
   disabled_providers?: string[]
   share?: "manual" | "auto" | "disabled"
   autoupdate?: boolean | "notify"
+  permission?: PermissionConfig
   [key: string]: unknown
 }
 

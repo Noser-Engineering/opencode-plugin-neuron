@@ -154,6 +154,13 @@ Alongside that, the plugin sets:
 | `share` | `"disabled"` | `/share` publishes the conversation including code excerpts to opencode.ai, where a CDN caches it |
 | `autoupdate` | `"notify"` | an unattended update can introduce a new preconfigured provider. An existing `false` is stricter and is left alone |
 | `disabled_providers` | the block list | entries already present are kept |
+| `permission` | a baseline policy | see below |
+
+### Permission baseline
+
+The plugin also fills in a baseline `permission` policy: deny reading or editing secrets (`.env`, `.npmrc`, `.pypirc`, SSH keys), allow read-only shell commands (`git status`, `git diff`, `git log`, `ls`, `grep`, test runners, …) without asking, and require confirmation for anything else, including `rm`, `git push`, `git checkout`, `curl`, and `wget`. The exact patterns live in `DEFAULT_PERMISSION_POLICY` in `src/compliance.ts`.
+
+Like the block list, this is additive: it only fills in a pattern that is not already present. A rule you set yourself, for the same pattern or as a blanket string for a whole category (e.g. `"edit": "allow"`), is never overwritten or expanded. Governed by the same `enforce` flag as the rest of the compliance layer.
 
 ### What this does not cover
 

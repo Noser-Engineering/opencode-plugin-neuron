@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added: a baseline `permission` policy
+
+The compliance layer now also fills in a baseline `permission` config: deny
+reading/editing secrets (`.env`, `.npmrc`, `.pypirc`, SSH keys), allow
+read-only shell commands without asking, and ask for confirmation on
+anything else. Additive like the provider block list — an existing rule for
+the same pattern, or a category set as a blanket string, is never
+overwritten. Governed by the existing `enforce` flag.
+
 ## 0.3.5
 
 ### Added: standalone binaries as a Node-free install option

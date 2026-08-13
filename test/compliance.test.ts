@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { applyCompliance, AUTOLOADED_PROVIDERS } from "../src/compliance.js"
+import { applyCompliance, applyPermissionPolicy, AUTOLOADED_PROVIDERS, DEFAULT_PERMISSION_POLICY } from "../src/compliance.js"
 import { enhanceConfig } from "../src/plugin.js"
 import type { OpenCodeConfig } from "../src/types.js"
 
@@ -125,6 +125,78 @@ describe("applyCompliance", () => {
     // A1 Zen, A2 a stray credential, A3 /share, A4 an unattended update.
     expect(AUTOLOADED_PROVIDERS).toContain("opencode")
     expect(AUTOLOADED_PROVIDERS).toContain("anthropic")
+  })
+
+  it("writes the baseline permission policy", () => {
+    const config: OpenCodeConfig = {}
+
+    applyCompliance(config, ENFORCED)
+
+    expect(config.permission).toEqual(DEFAULT_PERMISSION_POLICY)
+  })
+
+  it("does not touch permissions when enforcement is off", () => {
+    const config: OpenCodeConfig = { permission: { "*": "allow" } }
+
+    applyCompliance(config, { enforce: false, denyProviders: [] })
+
+    expect(config.permission).toEqual({ "*": "allow" })
+  })
+})
+
+describe("applyPermissionPolicy", () => {
+  it("writes the full default policy into an empty config", () => {
+    const config: OpenCodeConfig = {}
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    expect(config.permission).toEqual(DEFAULT_PERMISSION_POLICY)
+  })
+
+  it("keeps the user's top-level default instead of overwriting it", () => {
+    const config: OpenCodeConfig = { permission: { "*": "allow" } }
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    expect(config.permission?.["*"]).toBe("allow")
+  })
+
+  it("adds missing patterns to a category without touching existing ones", () => {
+    const config: OpenCodeConfig = { permission: { bash: { "*": "allow", "rm *": "allow" } } }
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    // User's own choices for patterns we also default survive untouched.
+    expect((config.permission?.bash as Record<string, string>)["*"]).toBe("allow")
+    expect((config.permission?.bash as Record<string, string>)["rm *"]).toBe("allow")
+    // A pattern the user never mentioned gets our default.
+    expect((config.permission?.bash as Record<string, string>)["git push*"]).toBe("ask")
+  })
+
+  it("leaves a category the user set as a blanket rule untouched", () => {
+    const config: OpenCodeConfig = { permission: { edit: "allow" } }
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    expect(config.permission?.edit).toBe("allow")
+  })
+
+  it("leaves an unrelated permission category alone", () => {
+    const config: OpenCodeConfig = { permission: { webfetch: "allow" } as OpenCodeConfig["permission"] }
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    expect((config.permission as Record<string, unknown>).webfetch).toBe("allow")
+  })
+
+  it("is idempotent", () => {
+    const config: OpenCodeConfig = {}
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+    const afterFirst = structuredClone(config)
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    expect(config).toEqual(afterFirst)
   })
 })
 
