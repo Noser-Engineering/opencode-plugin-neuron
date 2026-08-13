@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.6
 
 ### Added: a baseline `permission` policy
 
