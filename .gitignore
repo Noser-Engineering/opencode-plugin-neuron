@@ -2,5 +2,6 @@ node_modules/
 dist/
 coverage/
 skill-observations/
+release-binaries/
 *.tgz
 .DS_Store
