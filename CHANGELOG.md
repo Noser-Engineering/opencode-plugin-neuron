@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.7
 
 ### Added: models marked `deprecated` in config.yaml are hidden
 
