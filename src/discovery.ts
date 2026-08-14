@@ -136,6 +136,41 @@ function parseModelGroup(value: unknown): LiteLLMModel | undefined {
   }
 }
 
+/**
+ * Model names (config.yaml's `model_name`, the same alias `/model_group/info`
+ * calls `model_group` and `/v1/models` reports as `id`) that at least one
+ * deployment marks `model_info.deprecated: true`.
+ *
+ * Neither of the endpoints `discoverModels` otherwise calls carries this
+ * flag: `/model_group/info` is a fixed, curated schema with no room for
+ * custom `model_info` fields, and `/v1/models` reports only id/object/owned_by.
+ * `/v1/model/info` is the one endpoint that passes config.yaml's `model_info`
+ * through unchanged, so it is the only source for this.
+ *
+ * Best effort: a key that cannot reach this endpoint, or a proxy old enough
+ * not to have it, still gets its models — just without deprecation filtering.
+ */
+async function fetchDeprecatedModelNames(
+  baseURL: string,
+  apiKey: string | undefined,
+  options: DiscoveryOptions,
+): Promise<Set<string>> {
+  const deprecated = new Set<string>()
+  try {
+    const data = await fetchModelList(`${baseURL}/model/info`, apiKey, options)
+    for (const value of data) {
+      const item = asRecord(value)
+      const name = typeof item?.model_name === "string" ? item.model_name : undefined
+      if (!name) continue
+      const info = asRecord(item?.model_info)
+      if (info?.deprecated === true) deprecated.add(name)
+    }
+  } catch {
+    // Fail open: nothing gets filtered as deprecated.
+  }
+  return deprecated
+}
+
 async function fetchModelList(
   url: string,
   apiKey: string | undefined,
@@ -172,14 +207,14 @@ function collect(data: unknown[], parse: (value: unknown) => LiteLLMModel | unde
 }
 
 /**
- * Asks the proxy which models this key may use.
+ * The model list itself, from whichever endpoint answers it.
  *
  * /model_group/info is the better source: deduplicated per alias, with costs,
  * a mode and honest capability flags. It is also newer, and a restricted key
  * may not reach it, so /v1/models remains as a fallback. Both paths return the
  * same normalized shape.
  */
-export async function discoverModels(
+async function discoverRawModels(
   baseURL: string,
   apiKey: string | undefined,
   options: DiscoveryOptions,
@@ -195,6 +230,23 @@ export async function discoverModels(
   }
 
   return collect(await fetchModelList(`${baseURL}/models`, apiKey, options), parseModel)
+}
+
+/**
+ * Asks the proxy which models this key may use, with anything config.yaml
+ * marked `model_info.deprecated: true` removed. Run alongside the model list
+ * itself rather than after it, so the extra request costs no latency.
+ */
+export async function discoverModels(
+  baseURL: string,
+  apiKey: string | undefined,
+  options: DiscoveryOptions,
+): Promise<LiteLLMModel[]> {
+  const [models, deprecated] = await Promise.all([
+    discoverRawModels(baseURL, apiKey, options),
+    fetchDeprecatedModelNames(baseURL, apiKey, options),
+  ])
+  return deprecated.size ? models.filter((model) => !deprecated.has(model.id)) : models
 }
 
 export function toModelConfig(model: LiteLLMModel): ModelConfig {

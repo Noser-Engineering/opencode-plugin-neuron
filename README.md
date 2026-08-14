@@ -199,6 +199,7 @@ The layer depends on the `config` hook running before OpenCode resolves provider
 - Discovery prefers `GET /v1/model_group/info`, which reports one entry per alias with mode, context limits, costs and capability flags. It falls back to `GET /v1/models` for older LiteLLM versions and restricted keys.
 - Costs are converted from LiteLLM's per-token prices to the per-million unit OpenCode expects.
 - Wildcard entries are LiteLLM access rules rather than callable models and are dropped, as is anything whose mode is not `chat` or `responses`. An entry without a mode is kept.
+- A model whose config.yaml sets `model_info.deprecated: true` is dropped from the picker, the same as if it did not exist. Checked via `GET /v1/model/info`, the only endpoint that passes `model_info` through unchanged; if that call fails, nothing is filtered on this basis rather than risking a false drop.
 - Discovery runs once for every profile at OpenCode startup, and the result is reused for the rest of the process.
 - Profiles are queried concurrently and authenticated independently.
 - Proxy URLs are configurable. Remote proxies must use HTTPS; plain HTTP is accepted only for localhost.

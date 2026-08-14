@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added: models marked `deprecated` in config.yaml are hidden
+
+`model_info.deprecated: true` on a model now removes it from the picker,
+checked via `GET /v1/model/info` alongside the existing discovery call.
+`/model_group/info` and `/v1/models` never carry this flag, so this was the
+one endpoint that could answer it. Best effort: if the check fails, nothing
+is filtered on this basis.
+
 ## 0.3.6
 
 ### Added: a baseline `permission` policy

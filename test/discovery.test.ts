@@ -8,13 +8,19 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-/** Answers /model_group/info and /v1/models from separate fixtures. */
-function routedFetch(routes: { modelGroup?: () => Response; models?: () => Response }) {
+/** Answers /model_group/info, /v1/models and /v1/model/info from separate fixtures. */
+function routedFetch(routes: { modelGroup?: () => Response; models?: () => Response; modelInfo?: () => Response }) {
   return vi.fn(async (url: string | URL) => {
     const href = String(url)
     if (href.endsWith("/model_group/info")) {
       if (!routes.modelGroup) return new Response(null, { status: 404, statusText: "Not Found" })
       return routes.modelGroup()
+    }
+    if (href.endsWith("/model/info")) {
+      // Deprecation lookup is best-effort: default to "nothing deprecated"
+      // rather than requiring every unrelated test to stub this too.
+      if (!routes.modelInfo) return jsonResponse({ data: [] })
+      return routes.modelInfo()
     }
     if (!routes.models) return new Response(null, { status: 404, statusText: "Not Found" })
     return routes.models()
@@ -129,7 +135,8 @@ describe("discoverModels fallback to /v1/models", () => {
     })
 
     await expect(discover(fetchMock)).resolves.toEqual([{ id: "fallback-model" }])
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // model_group/info (404), the /v1/models fallback, and the deprecation lookup.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it("falls back when the model group endpoint answers with an unexpected schema", async () => {
@@ -251,6 +258,66 @@ describe("discovery filters", () => {
     })
 
     await expect(discover(fetchMock)).resolves.toEqual([{ id: "unknown-mode" }])
+  })
+})
+
+describe("discoverModels deprecated filtering", () => {
+  it("drops a model /v1/model/info marks deprecated", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () =>
+        jsonResponse({ data: [{ model_group: "gpt-4-old" }, { model_group: "gpt-5.6-luna" }] }),
+      modelInfo: () =>
+        jsonResponse({
+          data: [
+            { model_name: "gpt-4-old", model_info: { deprecated: true, description: "Legacy" } },
+            { model_name: "gpt-5.6-luna", model_info: { deprecated: false } },
+          ],
+        }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([{ id: "gpt-5.6-luna" }])
+  })
+
+  it("filters the /v1/models fallback the same way", async () => {
+    const fetchMock = routedFetch({
+      models: () => jsonResponse({ data: [{ id: "gpt-4-old" }, { id: "current-model" }] }),
+      modelInfo: () => jsonResponse({ data: [{ model_name: "gpt-4-old", model_info: { deprecated: true } }] }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([{ id: "current-model" }])
+  })
+
+  it("treats any deployment under the alias as deprecated", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "load-balanced" }] }),
+      modelInfo: () =>
+        jsonResponse({
+          data: [
+            { model_name: "load-balanced", model_info: { deprecated: false } },
+            { model_name: "load-balanced", model_info: { deprecated: true } },
+          ],
+        }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([])
+  })
+
+  it("keeps everything when the deprecation lookup fails", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "still-here" }] }),
+      modelInfo: () => new Response(null, { status: 500, statusText: "Internal Server Error" }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([{ id: "still-here" }])
+  })
+
+  it("ignores a non-boolean deprecated value", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "still-here" }] }),
+      modelInfo: () => jsonResponse({ data: [{ model_name: "still-here", model_info: { deprecated: "true" } }] }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([{ id: "still-here" }])
   })
 })
 
