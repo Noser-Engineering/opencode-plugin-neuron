@@ -217,6 +217,7 @@ The layer depends on the `config` hook running before OpenCode resolves provider
 - A failed or offline profile logs a warning but does not prevent OpenCode from starting.
 - Discovery is capped at 5 seconds by default. Set `timeoutMs` in the plugin options to a value from 1000 to 30000 milliseconds to override it.
 - A model the proxy reports is only added if the provider does not already define it, so hand-curated entries win.
+- A model whose LiteLLM deployment reports `mode: "responses"` gets its own adapter override (`@ai-sdk/openai` instead of the profile's default `@ai-sdk/openai-compatible`), so it uses `/v1/responses` instead of `/v1/chat/completions`. Needed because a Responses-only deployment answers a chat-completions call with `finish_reason: stop` right after its first tool call, ending OpenCode's agent loop as if the model were done. Profiles that mix both kinds of models are unaffected either way, since the override applies per model, not per profile.
 
 OpenCode only reads plugin configuration during startup. Restart it whenever profiles or LiteLLM's model list change.
 

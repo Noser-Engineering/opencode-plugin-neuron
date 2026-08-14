@@ -41,6 +41,28 @@ describe("enhanceConfig", () => {
     })
   })
 
+  it("overrides the adapter only for the models that need the Responses API", async () => {
+    const discover = vi.fn(async () => [
+      { id: "gpt-5.6-luna", mode: "responses" },
+      { id: "gpt-4-classic", mode: "chat" },
+    ])
+    const config: OpenCodeConfig = {}
+
+    await enhanceConfig(
+      config,
+      { profiles: [{ id: "swissmon", name: "swissMon", baseURL: "https://proxy.example/v1" }] },
+      {
+        discover,
+        readCredentials: async () => ({ swissmon: { key: "key", baseURL: "https://proxy.example/v1" } }),
+        log: async () => undefined,
+      },
+    )
+
+    expect(config.provider?.swissmon?.npm).toBe("@ai-sdk/openai-compatible")
+    expect(config.provider?.swissmon?.models?.["gpt-5.6-luna"]?.provider).toEqual({ npm: "@ai-sdk/openai" })
+    expect(config.provider?.swissmon?.models?.["gpt-4-classic"]?.provider).toBeUndefined()
+  })
+
   it("preserves curated models and strips unbound provider credentials", async () => {
     const config: OpenCodeConfig = {
       provider: {

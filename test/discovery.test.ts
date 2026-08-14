@@ -347,4 +347,24 @@ describe("toModelConfig", () => {
   it("omits modalities for a text-only model", () => {
     expect(toModelConfig({ id: "plain" }).modalities).toBeUndefined()
   })
+
+  it("overrides the adapter for a responses-mode model", () => {
+    expect(toModelConfig({ id: "gpt-5.6-luna", mode: "responses" }).provider).toEqual({
+      npm: "@ai-sdk/openai",
+    })
+  })
+
+  it("matches mode case-insensitively", () => {
+    expect(toModelConfig({ id: "gpt-5.6-luna", mode: "Responses" }).provider).toEqual({
+      npm: "@ai-sdk/openai",
+    })
+  })
+
+  it("leaves the provider's own adapter alone for a chat-mode model", () => {
+    expect(toModelConfig({ id: "chat-model", mode: "chat" }).provider).toBeUndefined()
+  })
+
+  it("leaves the provider's own adapter alone when mode is unknown", () => {
+    expect(toModelConfig({ id: "no-mode-model" }).provider).toBeUndefined()
+  })
 })

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed: the agent loop stopped after one tool call on Responses-only models
+
+A model whose LiteLLM deployment only implements `/v1/responses` returned
+`finish_reason: stop` right after its first tool call under the plugin's
+hard-coded `@ai-sdk/openai-compatible` adapter (`/v1/chat/completions`),
+indistinguishable to OpenCode from the model genuinely being done. A model
+reporting `mode: "responses"` now gets `@ai-sdk/openai` as a per-model
+provider override instead, leaving the rest of the profile — including a mix
+of both kinds of models under one proxy — on the previous default.
+
 ## 0.3.7
 
 ### Added: models marked `deprecated` in config.yaml are hidden

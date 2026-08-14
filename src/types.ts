@@ -52,6 +52,10 @@ export interface ModelConfig {
     input?: Array<"text" | "image" | "pdf">
     output?: Array<"text">
   }
+  /** Overrides the provider's adapter for this one model; see RESPONSES_API_NPM. */
+  provider?: {
+    npm: string
+  }
   [key: string]: unknown
 }
 

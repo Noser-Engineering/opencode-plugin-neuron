@@ -1,3 +1,4 @@
+import { RESPONSES_API_NPM } from "./constants.js"
 import type { LiteLLMModel, ModelConfig } from "./types.js"
 
 interface DiscoveryOptions {
@@ -271,6 +272,14 @@ export function toModelConfig(model: LiteLLMModel): ModelConfig {
       ? { input: model.input_cost_per_million, output: model.output_cost_per_million }
       : undefined
 
+  // A deployment that only implements the Responses API returns
+  // `finish_reason: stop` after its first tool call under the default
+  // chat-completions adapter, ending the agent loop early. OpenCode lets a
+  // model override its provider's adapter individually, so only this one
+  // model needs to switch — the rest of the profile is unaffected, including
+  // a mix of both modes under the same proxy.
+  const isResponsesAPI = model.mode?.toLowerCase() === "responses"
+
   return {
     name: model.id,
     ...(model.supports_function_calling !== undefined ? { tool_call: model.supports_function_calling } : {}),
@@ -279,5 +288,6 @@ export function toModelConfig(model: LiteLLMModel): ModelConfig {
     ...(cost ? { cost } : {}),
     ...(context && output ? { limit: { context, output } } : {}),
     ...(input.length > 1 ? { modalities: { input, output: ["text"] as Array<"text"> } } : {}),
+    ...(isResponsesAPI ? { provider: { npm: RESPONSES_API_NPM } } : {}),
   }
 }
