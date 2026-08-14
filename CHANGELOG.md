@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.8
 
 ### Fixed: the agent loop stopped after one tool call on Responses-only models
 
