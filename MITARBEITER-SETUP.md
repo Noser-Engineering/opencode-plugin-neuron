@@ -3,13 +3,42 @@
 ## Voraussetzungen
 
 - OpenCode ist installiert.
-- Node.js 20 oder neuer ist installiert.
+- Node.js 20 oder neuer — nur für die `npx`-Variante unten. Ohne Node.js gibt es Alternativen, siehe „Ohne Node.js installieren".
 - Du hast einen Neuron-API-Key.
 
 ## 1. Plugin konfigurieren
 
 ```sh
 npx @noser-engineering/opencode-plugin-neuron setup --global
+```
+
+### Ohne Node.js installieren
+
+Kein Node.js auf dem Rechner? Dann eines der folgenden Binaries installieren — danach überall unten `opencode-neuron` statt `npx @noser-engineering/opencode-plugin-neuron` verwenden:
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Noser-Engineering/opencode-plugin-neuron/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Noser-Engineering/opencode-plugin-neuron/main/install.ps1 | iex
+```
+
+Windows mit [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add opencode-neuron https://github.com/Noser-Engineering/opencode-plugin-neuron
+scoop install opencode-neuron/opencode-neuron
+```
+
+Zum Aktualisieren einfach den jeweiligen Befehl erneut ausführen (bei Scoop: `scoop update opencode-neuron`).
+
+Node.js vorhanden, aber `npx` nervt bei jedem Aufruf? Einmalig global installieren:
+
+```sh
+npm install -g @noser-engineering/opencode-plugin-neuron
 ```
 
 Der Assistent fragt nach:

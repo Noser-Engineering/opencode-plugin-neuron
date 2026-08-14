@@ -16,7 +16,14 @@ Run the interactive setup command:
 npx @noser-engineering/opencode-plugin-neuron setup
 ```
 
-Don't have Node.js? Install a standalone binary instead — no Node/npm required:
+Already have Node.js and would rather not re-download the package every time? Install it globally once instead:
+
+```sh
+npm install -g @noser-engineering/opencode-plugin-neuron
+opencode-neuron setup
+```
+
+Don't have Node.js at all? Install a standalone binary instead — no Node/npm required:
 
 ```sh
 # macOS / Linux
