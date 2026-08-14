@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.9
+
+### Fixed: the deprecation check could silently fail open, showing removed models
+
+The `/v1/model/info` call that filters out models marked `model_info.deprecated: true`
+ran once per configured profile, all fired at once on OpenCode startup. If a
+proxy hosts several profiles, that's a burst of concurrent requests to the
+same host, and a failed one — whether from load, a permission gap, or a
+timeout — used to fail open without a trace: no log entry, deprecated models
+just stayed visible. The deprecation lookup is now cached once per proxy URL
+instead of once per profile, and a failure is logged
+(`Deprecated-model lookup failed for <url>; showing all models`) instead of
+disappearing silently.
+
 ## 0.3.8
 
 ### Fixed: the agent loop stopped after one tool call on Responses-only models

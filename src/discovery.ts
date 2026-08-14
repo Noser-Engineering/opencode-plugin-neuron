@@ -142,34 +142,37 @@ function parseModelGroup(value: unknown): LiteLLMModel | undefined {
  * calls `model_group` and `/v1/models` reports as `id`) that at least one
  * deployment marks `model_info.deprecated: true`.
  *
- * Neither of the endpoints `discoverModels` otherwise calls carries this
- * flag: `/model_group/info` is a fixed, curated schema with no room for
- * custom `model_info` fields, and `/v1/models` reports only id/object/owned_by.
+ * Neither of the endpoints `discoverRawModels` calls carries this flag:
+ * `/model_group/info` is a fixed, curated schema with no room for custom
+ * `model_info` fields, and `/v1/models` reports only id/object/owned_by.
  * `/v1/model/info` is the one endpoint that passes config.yaml's `model_info`
  * through unchanged, so it is the only source for this.
  *
- * Best effort: a key that cannot reach this endpoint, or a proxy old enough
- * not to have it, still gets its models — just without deprecation filtering.
+ * Throws rather than failing open itself: a key that cannot reach this
+ * endpoint, or a proxy old enough not to have it, should still get its
+ * models — but that fallback is the caller's call to make (and, in the
+ * plugin runtime, worth logging), not something to swallow silently here.
  */
-async function fetchDeprecatedModelNames(
+export async function fetchDeprecatedModelNames(
   baseURL: string,
   apiKey: string | undefined,
   options: DiscoveryOptions,
 ): Promise<Set<string>> {
   const deprecated = new Set<string>()
-  try {
-    const data = await fetchModelList(`${baseURL}/model/info`, apiKey, options)
-    for (const value of data) {
-      const item = asRecord(value)
-      const name = typeof item?.model_name === "string" ? item.model_name : undefined
-      if (!name) continue
-      const info = asRecord(item?.model_info)
-      if (info?.deprecated === true) deprecated.add(name)
-    }
-  } catch {
-    // Fail open: nothing gets filtered as deprecated.
+  const data = await fetchModelList(`${baseURL}/model/info`, apiKey, options)
+  for (const value of data) {
+    const item = asRecord(value)
+    const name = typeof item?.model_name === "string" ? item.model_name : undefined
+    if (!name) continue
+    const info = asRecord(item?.model_info)
+    if (info?.deprecated === true) deprecated.add(name)
   }
   return deprecated
+}
+
+/** Drops any model whose alias appears in `deprecated`. No-op if the set is empty. */
+export function filterDeprecated(models: LiteLLMModel[], deprecated: Set<string>): LiteLLMModel[] {
+  return deprecated.size ? models.filter((model) => !deprecated.has(model.id)) : models
 }
 
 async function fetchModelList(
@@ -215,7 +218,7 @@ function collect(data: unknown[], parse: (value: unknown) => LiteLLMModel | unde
  * may not reach it, so /v1/models remains as a fallback. Both paths return the
  * same normalized shape.
  */
-async function discoverRawModels(
+export async function discoverRawModels(
   baseURL: string,
   apiKey: string | undefined,
   options: DiscoveryOptions,
@@ -237,6 +240,12 @@ async function discoverRawModels(
  * Asks the proxy which models this key may use, with anything config.yaml
  * marked `model_info.deprecated: true` removed. Run alongside the model list
  * itself rather than after it, so the extra request costs no latency.
+ *
+ * Used by the `setup` CLI, which discovers one profile at a time and has no
+ * logger to report a failed deprecation lookup to — so, same as before,
+ * that lookup fails open and silent here. The plugin runtime instead calls
+ * `discoverRawModels` and `fetchDeprecatedModelNames` separately so it can
+ * cache the deprecation lookup once per proxy and log when it falls back.
  */
 export async function discoverModels(
   baseURL: string,
@@ -245,9 +254,9 @@ export async function discoverModels(
 ): Promise<LiteLLMModel[]> {
   const [models, deprecated] = await Promise.all([
     discoverRawModels(baseURL, apiKey, options),
-    fetchDeprecatedModelNames(baseURL, apiKey, options),
+    fetchDeprecatedModelNames(baseURL, apiKey, options).catch(() => new Set<string>()),
   ])
-  return deprecated.size ? models.filter((model) => !deprecated.has(model.id)) : models
+  return filterDeprecated(models, deprecated)
 }
 
 export function toModelConfig(model: LiteLLMModel): ModelConfig {

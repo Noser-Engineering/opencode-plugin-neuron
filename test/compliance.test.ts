@@ -14,7 +14,8 @@ function neuronOptions(extra: Record<string, unknown> = {}): Record<string, unkn
 
 function silentDependencies(overrides: Partial<Parameters<typeof enhanceConfig>[2]> = {}) {
   return {
-    discover: async () => [{ id: "model-a" }],
+    discoverRawModels: async () => [{ id: "model-a" }],
+    fetchDeprecatedModelNames: async () => new Set<string>(),
     readCredentials: async () => ({ neuron: { key: "k", baseURL: "https://proxy.example/v1" } }),
     log: async () => undefined,
     ...overrides,
@@ -227,7 +228,7 @@ describe("enhanceConfig compliance wiring", () => {
       config,
       neuronOptions(),
       silentDependencies({
-        discover: async () => {
+        discoverRawModels: async () => {
           throw new Error("proxy unreachable")
         },
       }),
