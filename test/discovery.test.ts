@@ -9,12 +9,22 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /** Answers /model_group/info, /v1/models and /v1/model/info from separate fixtures. */
-function routedFetch(routes: { modelGroup?: () => Response; models?: () => Response; modelInfo?: () => Response }) {
+function routedFetch(routes: {
+  modelGroup?: () => Response
+  modelGroupRoot?: () => Response
+  models?: () => Response
+  modelInfo?: () => Response
+}) {
   return vi.fn(async (url: string | URL) => {
     const href = String(url)
     if (href.endsWith("/model_group/info")) {
-      if (!routes.modelGroup) return new Response(null, { status: 404, statusText: "Not Found" })
-      return routes.modelGroup()
+      // discoverRawModels tries the /v1 path first, then the bare root.
+      if (href.endsWith("/v1/model_group/info")) {
+        if (!routes.modelGroup) return new Response(null, { status: 404, statusText: "Not Found" })
+        return routes.modelGroup()
+      }
+      if (!routes.modelGroupRoot) return new Response(null, { status: 404, statusText: "Not Found" })
+      return routes.modelGroupRoot()
     }
     if (href.endsWith("/model/info")) {
       // Deprecation lookup is best-effort: default to "nothing deprecated"
@@ -135,8 +145,29 @@ describe("discoverModels fallback to /v1/models", () => {
     })
 
     await expect(discover(fetchMock)).resolves.toEqual([{ id: "fallback-model" }])
-    // model_group/info (404), the /v1/models fallback, and the deprecation lookup.
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // /v1/model_group/info (404), the root model_group/info retry (404),
+    // the /v1/models fallback, and the deprecation lookup.
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  it("uses the proxy root for /model_group/info when only the /v1 path 404s", async () => {
+    const fetchMock = routedFetch({
+      modelGroupRoot: () =>
+        jsonResponse({
+          data: [{ model_group: "gpt-5.6-terra", supports_vision: true }],
+        }),
+    })
+
+    const models = await discover(fetchMock)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://neuron.example/model_group/info",
+      expect.objectContaining({ headers: { Accept: "application/json", Authorization: "Bearer secret" } }),
+    )
+    expect(models).toEqual([
+      expect.objectContaining({ id: "gpt-5.6-terra", supports_vision: true }),
+    ])
+    expect(toModelConfig(models[0]!).attachment).toBe(true)
   })
 
   it("falls back when the model group endpoint answers with an unexpected schema", async () => {

@@ -211,6 +211,18 @@ function collect(data: unknown[], parse: (value: unknown) => LiteLLMModel | unde
 }
 
 /**
+ * Some LiteLLM deployments mount `/model_group/info` (and other
+ * management-style routes) only at the proxy root, not under the `/v1`
+ * prefix a profile's `baseURL` normally carries for the OpenAI-compatible
+ * routes. Strips a trailing `/v1` so the caller can retry there before
+ * giving up on capability data entirely.
+ */
+function withoutTrailingV1(baseURL: string): string | undefined {
+  const stripped = baseURL.replace(/\/v1\/?$/, "")
+  return stripped !== baseURL && stripped.length > 0 ? stripped : undefined
+}
+
+/**
  * The model list itself, from whichever endpoint answers it.
  *
  * /model_group/info is the better source: deduplicated per alias, with costs,
@@ -223,14 +235,19 @@ export async function discoverRawModels(
   apiKey: string | undefined,
   options: DiscoveryOptions,
 ): Promise<LiteLLMModel[]> {
-  try {
-    const groups = await fetchModelList(`${baseURL}/model_group/info`, apiKey, options)
-    const models = collect(groups, parseModelGroup)
-    // An empty result is treated as an unusable endpoint rather than as a key
-    // with no models: older LiteLLM answers 200 with an unrelated body.
-    if (models.length) return models
-  } catch {
-    // Fall through. The fallback reports its own failure.
+  const modelGroupBaseURLs = [baseURL, withoutTrailingV1(baseURL)].filter(
+    (value): value is string => value !== undefined,
+  )
+  for (const url of modelGroupBaseURLs) {
+    try {
+      const groups = await fetchModelList(`${url}/model_group/info`, apiKey, options)
+      const models = collect(groups, parseModelGroup)
+      // An empty result is treated as an unusable endpoint rather than as a key
+      // with no models: older LiteLLM answers 200 with an unrelated body.
+      if (models.length) return models
+    } catch {
+      // Fall through. The next candidate, or the fallback, reports its own failure.
+    }
   }
 
   return collect(await fetchModelList(`${baseURL}/models`, apiKey, options), parseModel)
