@@ -2,7 +2,7 @@ import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser"
-import { CONFIG_SCHEMA, PACKAGE_NAME } from "./constants.js"
+import { CONFIG_SCHEMA, PACKAGE_NAME, PACKAGE_VERSION } from "./constants.js"
 import { parsePluginOptions } from "./options.js"
 import type { NeuronProfile } from "./types.js"
 
@@ -84,9 +84,15 @@ function isPackageSpec(value: string): boolean {
   )
 }
 
-function isCurrentPackageSpec(value: string): boolean {
-  return value === PACKAGE_NAME || value.startsWith(`${PACKAGE_NAME}@`)
-}
+/**
+ * The plugin entry setup writes, pinned to the version of the CLI that is
+ * running. OpenCode installs a plugin spec into ~/.cache/opencode/packages
+ * once and never updates it — even an explicit `@latest` stays at whatever
+ * "latest" meant on first install. An exact version is the only spec it
+ * treats as new when it changes, so every setup run moves the config to the
+ * version the user just ran (npx fetches the latest by default).
+ */
+export const PINNED_PACKAGE_SPEC = `${PACKAGE_NAME}@${PACKAGE_VERSION}`
 
 function removeLegacyApiKeyEnv(options: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(options.profiles)) return options
@@ -145,10 +151,8 @@ export function updateConfigText(text: string, profiles: NeuronProfile[], filePa
     if (typeof entry === "string") return isPackageSpec(entry)
     return Array.isArray(entry) && typeof entry[0] === "string" && isPackageSpec(entry[0])
   })
-  const packageSpec =
-    existingEntry && isCurrentPackageSpec(existingEntry.packageSpec) ? existingEntry.packageSpec : PACKAGE_NAME
   const pluginEntry = [
-    packageSpec,
+    PINNED_PACKAGE_SPEC,
     {
       ...existingEntry?.rawOptions,
       profiles: profiles.map(cleanProfile),

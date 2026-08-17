@@ -16,6 +16,12 @@ Run the interactive setup command:
 npx @noser-engineering/opencode-plugin-neuron setup
 ```
 
+Setup pins the exact plugin version into the config. OpenCode installs a plugin
+spec once into `~/.cache/opencode/packages` and never updates it — an
+unversioned spec or `@latest` stays at whatever it resolved to on first
+install — so **rerunning setup is also how you update the plugin**: npx runs
+the latest release, which pins itself.
+
 Already have Node.js and would rather not re-download the package every time? Install it globally once instead:
 
 ```sh

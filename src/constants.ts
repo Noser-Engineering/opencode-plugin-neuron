@@ -1,4 +1,11 @@
 export const PACKAGE_NAME = "@noser-engineering/opencode-plugin-neuron"
+/**
+ * Kept in sync with package.json by scripts/sync-version.mjs via the
+ * `npm version` hook — do not edit by hand. A constant rather than a
+ * runtime read of package.json because the standalone binaries
+ * (`bun build --compile`) ship without one.
+ */
+export const PACKAGE_VERSION = "0.3.9"
 export const DEFAULT_TIMEOUT_MS = 5_000
 export const PROVIDER_NPM = "@ai-sdk/openai-compatible"
 /**

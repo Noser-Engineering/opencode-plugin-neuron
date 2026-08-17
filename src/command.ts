@@ -10,6 +10,7 @@ import { normalizeBaseURL, slugifyProviderID, validateProfile } from "./options.
 import { Prompts } from "./prompts.js"
 import {
   parseConfigText,
+  PINNED_PACKAGE_SPEC,
   readConfigText,
   readNeuronConfigEntry,
   resolveConfigPath,
@@ -193,6 +194,7 @@ async function persist(state: SetupState): Promise<void> {
   }
   const count = state.profiles.length
   process.stdout.write(`\n[ok] Configured ${count} LiteLLM profile${count === 1 ? "" : "s"}.\n`)
+  process.stdout.write(`Plugin pinned to ${PINNED_PACKAGE_SPEC}; rerun setup to update.\n`)
   process.stdout.write("Quit and restart OpenCode, then use /models to select a model.\n")
 }
 

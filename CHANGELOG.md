@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.10
+
+### Fixed: setup now pins the plugin version, so OpenCode actually picks up updates
+
+OpenCode installs a plugin spec into `~/.cache/opencode/packages` once and
+never updates it — even an unversioned spec or `@latest` stays at whatever
+version was current on first install. Anyone who set up before now has been
+running the plugin version from their first setup, regardless of releases
+since (which is why 0.3.7's deprecated-model filtering never reached
+configs set up earlier).
+
+`setup` now writes an exact pin (`@noser-engineering/opencode-plugin-neuron@<version>`
+of the CLI that is running) instead of the bare package name, and moves any
+existing pin along. A changed spec is the one thing OpenCode's cache treats
+as new, so rerunning setup — which npx serves at the latest version — is now
+also the update path. One-time fix for existing installs: rerun setup, or
+delete `~/.cache/opencode/packages/@noser-engineering` and restart OpenCode.
+
 ## 0.3.9
 
 ### Fixed: the deprecation check could silently fail open, showing removed models

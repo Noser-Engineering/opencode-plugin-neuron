@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { parseConfigText, readNeuronConfigEntry, updateConfigText } from "../src/setup.js"
+import { PACKAGE_VERSION } from "../src/constants.js"
+import { parseConfigText, PINNED_PACKAGE_SPEC, readNeuronConfigEntry, updateConfigText } from "../src/setup.js"
 
 describe("OpenCode config setup", () => {
   it("preserves comments and unrelated plugins", () => {
@@ -19,7 +20,7 @@ describe("OpenCode config setup", () => {
     expect(config.plugin).toEqual([
       "opencode-wakatime",
       [
-        "@noser-engineering/opencode-plugin-neuron",
+        PINNED_PACKAGE_SPEC,
         {
           profiles: [{ id: "work", name: "Work", baseURL: "https://proxy.example/v1" }],
         },
@@ -27,7 +28,12 @@ describe("OpenCode config setup", () => {
     ])
   })
 
-  it("updates an existing entry without duplicating it", () => {
+  it("pins the running version so OpenCode's plugin cache picks up updates", () => {
+    expect(PINNED_PACKAGE_SPEC).toBe(`@noser-engineering/opencode-plugin-neuron@${PACKAGE_VERSION}`)
+    expect(PACKAGE_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it("updates an existing entry without duplicating it, moving any old pin to the running version", () => {
     const original = JSON.stringify({
       plugin: [
         [
@@ -42,7 +48,7 @@ describe("OpenCode config setup", () => {
     const entry = readNeuronConfigEntry(parseConfigText(updated))
 
     expect(entry).toEqual({
-      packageSpec: "@noser-engineering/opencode-plugin-neuron@1.2.3",
+      packageSpec: PINNED_PACKAGE_SPEC,
       rawOptions: {
         timeoutMs: 10_000,
         profiles: [
@@ -83,7 +89,7 @@ describe("OpenCode config setup", () => {
 
     expect(updated.plugin).toEqual([
       [
-        "@noser-engineering/opencode-plugin-neuron",
+        PINNED_PACKAGE_SPEC,
         {
           profiles: [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }],
         },
