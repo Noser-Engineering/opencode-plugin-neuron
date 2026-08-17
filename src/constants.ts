@@ -5,7 +5,7 @@ export const PACKAGE_NAME = "@noser-engineering/opencode-plugin-neuron"
  * runtime read of package.json because the standalone binaries
  * (`bun build --compile`) ship without one.
  */
-export const PACKAGE_VERSION = "0.3.9"
+export const PACKAGE_VERSION = "0.3.10"
 export const DEFAULT_TIMEOUT_MS = 5_000
 export const PROVIDER_NPM = "@ai-sdk/openai-compatible"
 /**
