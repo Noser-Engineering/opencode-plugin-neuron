@@ -2,10 +2,10 @@ $ErrorActionPreference = "Stop"
 
 $Repo = "Noser-Engineering/opencode-plugin-neuron"
 
-$archRaw = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+$archRaw = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
 switch ($archRaw) {
-    "X64"   { $arch = "x64" }
-    "Arm64" { $arch = "arm64" }
+    "AMD64" { $arch = "x64" }
+    "ARM64" { $arch = "arm64" }
     default {
         Write-Error "Unsupported architecture '$archRaw'. Use 'npx @noser-engineering/opencode-plugin-neuron setup' instead."
         exit 1
