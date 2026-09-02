@@ -371,6 +371,18 @@ describe("toModelConfig", () => {
     })
   })
 
+  it("falls back output to context when the proxy reports no max_output_tokens", () => {
+    // /model_group/info sometimes reports only max_input_tokens (e.g. a
+    // self-hosted model config with no explicit output cap). Dropping `limit`
+    // entirely in that case would disable OpenCode's auto-compaction for the
+    // model, letting its context grow unbounded until the provider rejects
+    // the request.
+    expect(toModelConfig({ id: "team/model-b", max_input_tokens: 262_144 }).limit).toEqual({
+      context: 262_144,
+      output: 262_144,
+    })
+  })
+
   it("omits cost unless both directions are priced", () => {
     expect(toModelConfig({ id: "half-priced", input_cost_per_million: 3 }).cost).toBeUndefined()
   })

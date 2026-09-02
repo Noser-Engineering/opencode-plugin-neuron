@@ -278,7 +278,13 @@ export async function discoverModels(
 
 export function toModelConfig(model: LiteLLMModel): ModelConfig {
   const context = model.max_input_tokens ?? model.max_tokens
-  const output = model.max_output_tokens ?? model.max_tokens
+  // A proxy that only reports max_input_tokens (no max_output_tokens) must not
+  // lose its `limit` entirely: OpenCode keys auto-compaction off limit.context,
+  // so omitting `limit` here means this model's context never triggers
+  // compaction and grows unbounded until the provider rejects the request.
+  // OpenCode caps the actual completion request at its own default (32k)
+  // regardless, so falling back to `context` here is a safe upper bound.
+  const output = model.max_output_tokens ?? model.max_tokens ?? context
 
   // Trust the proxy when it says anything at all. The id heuristic only runs
   // for /v1/models, which reports no capabilities.
