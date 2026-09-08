@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0
+
+### Changed: only OpenCode Zen is blocked, not every vendor
+
+The compliance layer used to block ~60 providers — Anthropic, OpenAI, GitHub
+Copilot, Google, the hyperscalers, the gateways — unless each was declared in
+`opencode.json`. In practice that mostly blocked people's own Claude, Codex
+and Copilot licences. The default block list is now just `opencode` and
+`opencode-go` (Zen, OpenCode's hosted gateway, which is selectable with no
+credential at all). Everything else behaves as in plain OpenCode. Declaring a
+provider still unblocks it, and `denyProviders` still extends the list for an
+organisation that wants a specific provider ruled out. `share: "disabled"`,
+`autoupdate: "notify"` and the permission baseline are unchanged.
+
+Code: `AUTOLOADED_PROVIDERS` is renamed to `BLOCKED_PROVIDERS`.
+
 ## 0.3.10
 
 ### Fixed: setup now pins the plugin version, so OpenCode actually picks up updates

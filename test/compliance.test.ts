@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { applyCompliance, applyPermissionPolicy, AUTOLOADED_PROVIDERS, DEFAULT_PERMISSION_POLICY } from "../src/compliance.js"
+import { applyCompliance, applyPermissionPolicy, BLOCKED_PROVIDERS, DEFAULT_PERMISSION_POLICY } from "../src/compliance.js"
 import { enhanceConfig } from "../src/plugin.js"
 import type { OpenCodeConfig } from "../src/types.js"
 
@@ -23,15 +23,30 @@ function silentDependencies(overrides: Partial<Parameters<typeof enhanceConfig>[
 }
 
 describe("applyCompliance", () => {
-  it("blocks autoloaded providers and leaves declared ones alone", () => {
-    const config: OpenCodeConfig = { provider: { anthropic: {}, neuron: {} } }
+  it("blocks OpenCode Zen and nothing else", () => {
+    const config: OpenCodeConfig = { provider: { neuron: {} } }
 
     applyCompliance(config, ENFORCED)
 
-    expect(config.disabled_providers).toContain("opencode")
-    expect(config.disabled_providers).toContain("github-copilot")
-    expect(config.disabled_providers).not.toContain("anthropic")
-    expect(config.disabled_providers).not.toContain("neuron")
+    expect(config.disabled_providers).toEqual(["opencode", "opencode-go"])
+  })
+
+  it("leaves vendor and licence providers alone", () => {
+    const config: OpenCodeConfig = {}
+
+    applyCompliance(config, ENFORCED)
+
+    for (const id of ["anthropic", "openai", "github-copilot", "google"]) {
+      expect(config.disabled_providers).not.toContain(id)
+    }
+  })
+
+  it("does not block a declared opencode provider", () => {
+    const config: OpenCodeConfig = { provider: { opencode: {} } }
+
+    applyCompliance(config, ENFORCED)
+
+    expect(config.disabled_providers).not.toContain("opencode")
   })
 
   it("keeps disabled_providers the user set", () => {
@@ -40,15 +55,15 @@ describe("applyCompliance", () => {
     applyCompliance(config, ENFORCED)
 
     expect(config.disabled_providers).toContain("some-internal-provider")
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
   })
 
   it("honours a provider the user disabled even though it is declared", () => {
-    const config: OpenCodeConfig = { provider: { anthropic: {} }, disabled_providers: ["anthropic"] }
+    const config: OpenCodeConfig = { provider: { opencode: {} }, disabled_providers: ["opencode"] }
 
     applyCompliance(config, ENFORCED)
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
   })
 
   it("extends the block list with denyProviders", () => {
@@ -90,10 +105,10 @@ describe("applyCompliance", () => {
     const config: OpenCodeConfig = {}
 
     applyCompliance(config, ENFORCED)
-    config.provider = { anthropic: {} }
+    config.provider = { opencode: {} }
     applyCompliance(config, ENFORCED)
 
-    expect(config.disabled_providers).not.toContain("anthropic")
+    expect(config.disabled_providers).not.toContain("opencode")
     expect(new Set(config.disabled_providers).size).toBe(config.disabled_providers?.length)
   })
 
@@ -123,9 +138,11 @@ describe("applyCompliance", () => {
   })
 
   it("covers the vectors the layer exists for", () => {
-    // A1 Zen, A2 a stray credential, A3 /share, A4 an unattended update.
-    expect(AUTOLOADED_PROVIDERS).toContain("opencode")
-    expect(AUTOLOADED_PROVIDERS).toContain("anthropic")
+    // A1 Zen, A3 /share, A4 an unattended update. Stray vendor credentials
+    // (formerly A2) are deliberately no longer blocked: users bring their own
+    // Claude, Codex and Copilot licences.
+    expect(BLOCKED_PROVIDERS).toContain("opencode")
+    expect(BLOCKED_PROVIDERS).not.toContain("anthropic")
   })
 
   it("writes the baseline permission policy", () => {
@@ -207,7 +224,7 @@ describe("enhanceConfig compliance wiring", () => {
 
     await enhanceConfig(config, {}, silentDependencies())
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
     expect(config.share).toBe("disabled")
     expect(config.autoupdate).toBe("notify")
   })
@@ -217,7 +234,7 @@ describe("enhanceConfig compliance wiring", () => {
 
     await enhanceConfig(config, { profiles: "not-an-array" }, silentDependencies())
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
     expect(config.share).toBe("disabled")
   })
 
@@ -234,7 +251,7 @@ describe("enhanceConfig compliance wiring", () => {
       }),
     )
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
     expect(config.provider?.neuron).toBeDefined()
   })
 
@@ -251,7 +268,7 @@ describe("enhanceConfig compliance wiring", () => {
       }),
     )
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
   })
 
   it("allows the plugin's own profiles, so it never locks itself out", async () => {
@@ -264,12 +281,12 @@ describe("enhanceConfig compliance wiring", () => {
   })
 
   it("keeps a provider the user declared on purpose", async () => {
-    const config: OpenCodeConfig = { provider: { anthropic: { models: { "claude-sonnet-4-5": {} } } } }
+    const config: OpenCodeConfig = { provider: { opencode: {} } }
 
     await enhanceConfig(config, neuronOptions(), silentDependencies())
 
-    expect(config.disabled_providers).not.toContain("anthropic")
-    expect(config.provider?.anthropic).toBeDefined()
+    expect(config.disabled_providers).not.toContain("opencode")
+    expect(config.provider?.opencode).toBeDefined()
   })
 
   it("keeps protection when enforce is not a boolean", async () => {
@@ -278,7 +295,7 @@ describe("enhanceConfig compliance wiring", () => {
 
     await enhanceConfig(config, neuronOptions({ enforce: "false" }), silentDependencies({ log }))
 
-    expect(config.disabled_providers).toContain("anthropic")
+    expect(config.disabled_providers).toContain("opencode")
     expect(log).toHaveBeenCalledWith(
       "warn",
       expect.stringContaining("enforce must be a boolean"),

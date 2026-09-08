@@ -4,7 +4,7 @@ An OpenCode plugin for configurable LiteLLM-compatible proxies. When OpenCode st
 
 It supports multiple named profiles against the same proxy. Each profile is a separate OpenCode provider and can use a different API key, so models remain selectable as, for example, `neuron-work/model-id` and `neuron-team/model-id`.
 
-It also blocks providers nobody asked for. See [Compliance behavior](#compliance-behavior).
+It also blocks OpenCode's hosted gateway and disables sharing. See [Compliance behavior](#compliance-behavior).
 
 ## Setup
 
@@ -146,19 +146,21 @@ This path matches OpenCode's own credential store on every platform, Windows inc
 
 ## Compliance behavior
 
-OpenCode loads a provider as soon as a credential for it exists. A leftover `ANTHROPIC_API_KEY` from another engagement, a `GITHUB_TOKEN`, or the built-in `opencode` provider is enough to make an endpoint selectable that nobody cleared for the data being worked on. From 0.3.0 the plugin closes that gap.
+OpenCode's built-in `opencode` provider (Zen, its hosted gateway) is selectable on first start without any credential, and sends the conversation to a third party nobody cleared for the data being worked on. The plugin blocks it, and its `opencode-go` sibling, out of the box.
 
-**Declaring a provider is how you approve it.** OpenCode fills `config.provider` from configuration files only, never from an autoloaded credential. Everything named in `opencode.json` keeps working, including the plugin's own profiles; the plugin only blocks what nobody named:
+Everything else stays available. A Claude, Codex or GitHub Copilot licence you bring along works as it does in plain OpenCode; the plugin does not touch it. Up to 0.3.12 the plugin blocked every mainstream vendor, hyperscaler and gateway unless it was declared in `opencode.json`; that turned out to get in the way of exactly those licences, so the list is now a short denylist instead.
+
+**Declaring a provider is how you approve it.** OpenCode fills `config.provider` from configuration files only, never from an autoloaded credential, so a blocked provider that is named in `opencode.json` is unblocked again:
 
 ```json
 {
   "provider": {
-    "anthropic": {}
+    "opencode": {}
   }
 }
 ```
 
-Two lines, and `anthropic` is available again with its full model list from models.dev. That is deliberate and not a hole to be plugged. The goal is to stop an accident, not to stop a decision. Anyone who writes a provider into their config has made a decision.
+That is deliberate and not a hole to be plugged. The goal is to stop an accident, not to stop a decision.
 
 Alongside that, the plugin sets:
 
@@ -177,7 +179,7 @@ Like the block list, this is additive: it only fills in a pattern that is not al
 
 ### What this does not cover
 
-- **The block list cannot be complete.** All 172 providers in the models.dev catalog load from an environment variable, and an OpenCode release can add more. The list covers the mainstream vendors, hyperscalers, developer platforms and gateways; a credential for something outside it is still picked up. Extend the list with `denyProviders`.
+- **Stray vendor credentials are not blocked.** A leftover `ANTHROPIC_API_KEY` or `GITHUB_TOKEN` still makes that provider selectable, exactly as in plain OpenCode. An organisation that wants a specific provider ruled out lists it in `denyProviders`.
 - **Deliberate misuse is out of scope.** Anyone can declare a provider, or set `enforce: false`.
 
 The plugin used to also mirror the block list into `experimental.policies`. That statement shape is inert on OpenCode 1.18.4 for provider resolution, and worse, that release's `GET /config` response fails to validate it — the TUI calls that endpoint on startup and crashes with `Expected ConfigV2.Experimental.Policy, got {...}`. 0.3.1 stops writing it; `disabled_providers` is the only enforcement mechanism.

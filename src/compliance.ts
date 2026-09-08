@@ -1,84 +1,16 @@
 import type { OpenCodeConfig, PermissionCategory, PermissionConfig, PermissionRule } from "./types.js"
 
 /**
- * Providers OpenCode loads on its own as soon as a credential or environment
- * variable happens to exist, and that a workstation realistically carries a
- * stray credential for.
+ * Providers blocked out of the box.
  *
- * This list is deliberately a denylist, not an allowlist: it never touches a
- * provider nobody named. The trade-off is that it cannot be complete. Every one
- * of the 172 providers in the models.dev catalog autoloads from an environment
- * variable, and a future OpenCode release can add more, so a credential for a
- * provider that is not listed here still gets picked up. Extend the list with
- * the `denyProviders` plugin option rather than editing this file downstream.
+ * Only OpenCode's own hosted gateway (Zen). It is the default path on first
+ * contact, needs no credential to show up, and sends the conversation to a
+ * third party nobody cleared. Everything else — Anthropic, OpenAI/Codex,
+ * GitHub Copilot, Google, … — is left alone: a credential for one of those is
+ * a licence somebody paid for, not an accident. Extend the list with the
+ * `denyProviders` plugin option for a provider your organisation rules out.
  */
-export const AUTOLOADED_PROVIDERS: readonly string[] = [
-  // OpenCode's own hosted gateway (Zen) — the default path on first contact
-  "opencode",
-  "opencode-go",
-  // First-party model vendors
-  "anthropic",
-  "openai",
-  "google",
-  "xai",
-  "meta",
-  "llama",
-  "mistral",
-  "deepseek",
-  "cohere",
-  "perplexity",
-  "moonshotai",
-  "kimi-for-coding",
-  "minimax",
-  "zhipuai",
-  "zai",
-  "alibaba",
-  "upstage",
-  "sarvam",
-  "inception",
-  "venice",
-  // Hyperscalers and enterprise platforms
-  "azure",
-  "azure-cognitive-services",
-  "google-vertex",
-  "google-vertex-anthropic",
-  "amazon-bedrock",
-  "databricks",
-  "snowflake-cortex",
-  "cloudflare-workers-ai",
-  "cloudflare-ai-gateway",
-  "scaleway",
-  "ovhcloud",
-  "digitalocean",
-  "hetzner",
-  "vultr",
-  // Developer platforms that ship a token by default
-  "github-copilot",
-  "github-models",
-  "gitlab",
-  "vercel",
-  "v0",
-  // Aggregators and inference gateways
-  "openrouter",
-  "requesty",
-  "helicone",
-  "llmgateway",
-  "togetherai",
-  "fireworks-ai",
-  "groq",
-  "cerebras",
-  "deepinfra",
-  "novita-ai",
-  "baseten",
-  "nvidia",
-  "huggingface",
-  "chutes",
-  "poe",
-  "morph",
-  "synthetic",
-  "ollama-cloud",
-  "lmstudio",
-]
+export const BLOCKED_PROVIDERS: readonly string[] = ["opencode", "opencode-go"]
 
 /**
  * Baseline tool permissions for the agent: keep it out of secrets by default,
@@ -207,16 +139,16 @@ export function declaredProviderIDs(config: OpenCodeConfig): string[] {
   return Object.keys(config.provider)
 }
 
-/** The providers to block: everything denyable that was not declared. */
+/** The providers to block: the block list plus denyProviders, minus what was declared. */
 export function deniedProviderIDs(config: OpenCodeConfig, policy: CompliancePolicy): string[] {
   const declared = new Set(declaredProviderIDs(config))
-  const denyable = uniqueStrings([...AUTOLOADED_PROVIDERS, ...policy.denyProviders])
+  const denyable = uniqueStrings([...BLOCKED_PROVIDERS, ...policy.denyProviders])
   return denyable.filter((id) => !declared.has(id))
 }
 
 /**
- * Blocks providers nobody declared and turns off the two features that can leak
- * a conversation or change the provider set behind the user's back.
+ * Blocks the listed providers unless declared and turns off the two features
+ * that can leak a conversation or change the provider set behind the user's back.
  *
  * Verified against OpenCode 1.18.4: `disabled_providers` set from the `config`
  * hook removes a provider from the catalog, and it wins over an explicitly
