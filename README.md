@@ -212,7 +212,7 @@ The layer depends on the `config` hook running before OpenCode resolves provider
 ## Behavior
 
 - Discovery prefers `GET /v1/model_group/info`, which reports one entry per alias with mode, context limits, costs and capability flags. It falls back to `GET /v1/models` for older LiteLLM versions and restricted keys.
-- Costs are converted from LiteLLM's per-token prices to the per-million unit OpenCode expects.
+- Costs are converted from LiteLLM's per-token prices to the per-million unit OpenCode expects. Cache-read and cache-write prices come from `GET /v1/model/info` (`cache_read_input_token_cost`, `cache_creation_input_token_cost`), since `/model_group/info` reports only input and output. OpenCode prices cached tokens at zero unless told otherwise, and in an agentic session those are nearly all the prompt tokens, so without them its cost display sits 10–50× below what the proxy bills. If that lookup fails, cached tokens are priced like input: too high beats invisible.
 - Wildcard entries are LiteLLM access rules rather than callable models and are dropped, as is anything whose mode is not `chat` or `responses`. An entry without a mode is kept.
 - A model whose config.yaml sets `model_info.deprecated: true` is dropped from the picker, the same as if it did not exist. Checked via `GET /v1/model/info`, the only endpoint that passes `model_info` through unchanged; if that call fails, nothing is filtered on this basis rather than risking a false drop.
 - Discovery runs once for every profile at OpenCode startup, and the result is reused for the rest of the process.

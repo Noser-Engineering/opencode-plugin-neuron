@@ -1,5 +1,5 @@
 import { RESPONSES_API_NPM } from "./constants.js"
-import type { LiteLLMModel, ModelConfig } from "./types.js"
+import type { CacheCosts, LiteLLMModel, ModelConfig, ModelInfo } from "./types.js"
 
 interface DiscoveryOptions {
   timeoutMs: number
@@ -138,27 +138,33 @@ function parseModelGroup(value: unknown): LiteLLMModel | undefined {
 }
 
 /**
- * Model names (config.yaml's `model_name`, the same alias `/model_group/info`
- * calls `model_group` and `/v1/models` reports as `id`) that at least one
- * deployment marks `model_info.deprecated: true`.
+ * Everything `/v1/model/info` knows that the model-list endpoints do not:
  *
- * Neither of the endpoints `discoverRawModels` calls carries this flag:
- * `/model_group/info` is a fixed, curated schema with no room for custom
- * `model_info` fields, and `/v1/models` reports only id/object/owned_by.
- * `/v1/model/info` is the one endpoint that passes config.yaml's `model_info`
- * through unchanged, so it is the only source for this.
+ * - Model names (config.yaml's `model_name`, the same alias `/model_group/info`
+ *   calls `model_group` and `/v1/models` reports as `id`) that at least one
+ *   deployment marks `model_info.deprecated: true`. `/model_group/info` is a
+ *   fixed, curated schema with no room for custom `model_info` fields, and
+ *   `/v1/models` reports only id/object/owned_by.
+ * - Cache pricing. `/model_group/info` (LiteLLM ≤ 1.100) reports only input
+ *   and output prices, and OpenCode prices cache reads and writes at zero
+ *   unless told otherwise. In an agentic session well over 99% of prompt
+ *   tokens are cache reads or writes, so without these two numbers OpenCode
+ *   shows roughly the output cost alone — 10–50× below what the proxy bills.
+ *   Where an alias has several deployments the most expensive one wins,
+ *   matching how `/model_group/info` picks its input price.
  *
  * Throws rather than failing open itself: a key that cannot reach this
  * endpoint, or a proxy old enough not to have it, should still get its
  * models — but that fallback is the caller's call to make (and, in the
  * plugin runtime, worth logging), not something to swallow silently here.
  */
-export async function fetchDeprecatedModelNames(
+export async function fetchModelInfo(
   baseURL: string,
   apiKey: string | undefined,
   options: DiscoveryOptions,
-): Promise<Set<string>> {
+): Promise<ModelInfo> {
   const deprecated = new Set<string>()
+  const cacheCosts = new Map<string, CacheCosts>()
   const data = await fetchModelList(`${baseURL}/model/info`, apiKey, options)
   for (const value of data) {
     const item = asRecord(value)
@@ -166,13 +172,47 @@ export async function fetchDeprecatedModelNames(
     if (!name) continue
     const info = asRecord(item?.model_info)
     if (info?.deprecated === true) deprecated.add(name)
+
+    const read = costPerMillion(info?.cache_read_input_token_cost)
+    const write = costPerMillion(info?.cache_creation_input_token_cost)
+    if (read === undefined && write === undefined) continue
+    const current = cacheCosts.get(name) ?? {}
+    const merged: CacheCosts = {}
+    const mergedRead = maxDefined(current.read, read)
+    const mergedWrite = maxDefined(current.write, write)
+    if (mergedRead !== undefined) merged.read = mergedRead
+    if (mergedWrite !== undefined) merged.write = mergedWrite
+    cacheCosts.set(name, merged)
   }
-  return deprecated
+  return { deprecated, cacheCosts }
 }
 
-/** Drops any model whose alias appears in `deprecated`. No-op if the set is empty. */
-export function filterDeprecated(models: LiteLLMModel[], deprecated: Set<string>): LiteLLMModel[] {
-  return deprecated.size ? models.filter((model) => !deprecated.has(model.id)) : models
+function maxDefined(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return Math.max(a, b)
+}
+
+export function emptyModelInfo(): ModelInfo {
+  return { deprecated: new Set(), cacheCosts: new Map() }
+}
+
+/**
+ * Drops any model whose alias is deprecated and attaches cache prices to the
+ * rest. No-op on an empty `ModelInfo`.
+ */
+export function applyModelInfo(models: LiteLLMModel[], info: ModelInfo): LiteLLMModel[] {
+  return models
+    .filter((model) => !info.deprecated.has(model.id))
+    .map((model) => {
+      const costs = info.cacheCosts.get(model.id)
+      if (!costs) return model
+      return {
+        ...model,
+        ...(costs.read !== undefined ? { cache_read_cost_per_million: costs.read } : {}),
+        ...(costs.write !== undefined ? { cache_write_cost_per_million: costs.write } : {}),
+      }
+    })
 }
 
 async function fetchModelList(
@@ -261,7 +301,7 @@ export async function discoverRawModels(
  * Used by the `setup` CLI, which discovers one profile at a time and has no
  * logger to report a failed deprecation lookup to — so, same as before,
  * that lookup fails open and silent here. The plugin runtime instead calls
- * `discoverRawModels` and `fetchDeprecatedModelNames` separately so it can
+ * `discoverRawModels` and `fetchModelInfo` separately so it can
  * cache the deprecation lookup once per proxy and log when it falls back.
  */
 export async function discoverModels(
@@ -269,11 +309,11 @@ export async function discoverModels(
   apiKey: string | undefined,
   options: DiscoveryOptions,
 ): Promise<LiteLLMModel[]> {
-  const [models, deprecated] = await Promise.all([
+  const [models, info] = await Promise.all([
     discoverRawModels(baseURL, apiKey, options),
-    fetchDeprecatedModelNames(baseURL, apiKey, options).catch(() => new Set<string>()),
+    fetchModelInfo(baseURL, apiKey, options).catch(() => emptyModelInfo()),
   ])
-  return filterDeprecated(models, deprecated)
+  return applyModelInfo(models, info)
 }
 
 export function toModelConfig(model: LiteLLMModel): ModelConfig {
@@ -299,9 +339,17 @@ export function toModelConfig(model: LiteLLMModel): ModelConfig {
     ...(model.supports_pdf_input ? (["pdf"] as const) : []),
   ]
 
+  // Cache prices fall back to the input price rather than to nothing: OpenCode
+  // treats a missing cache price as free, and in practice that hides more
+  // than 90% of a session's real cost. Too high beats invisible.
   const cost =
     model.input_cost_per_million !== undefined && model.output_cost_per_million !== undefined
-      ? { input: model.input_cost_per_million, output: model.output_cost_per_million }
+      ? {
+          input: model.input_cost_per_million,
+          output: model.output_cost_per_million,
+          cache_read: model.cache_read_cost_per_million ?? model.input_cost_per_million,
+          cache_write: model.cache_write_cost_per_million ?? model.input_cost_per_million,
+        }
       : undefined
 
   // A deployment that only implements the Responses API returns

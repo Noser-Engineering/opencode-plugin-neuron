@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed: session cost in OpenCode was 10–50× too low
+
+The plugin passed OpenCode only `cost.input` and `cost.output`. OpenCode
+prices cache reads and cache writes separately and treats a missing price as
+zero, and in an agentic session well over 99% of prompt tokens are cache
+reads or writes. What OpenCode showed was essentially the output cost alone:
+a day that Neuron billed at ~$237 appeared as $20.88.
+
+`/model_group/info`, the plugin's primary source, carries no cache prices
+(LiteLLM 1.100). `/v1/model/info` does, and the plugin already called it for
+deprecation flags, so that request now also collects
+`cache_read_input_token_cost` and `cache_creation_input_token_cost` per alias
+(most expensive deployment wins, as `/model_group/info` does for input) and
+emits them as `cost.cache_read` / `cost.cache_write`. When the lookup fails,
+cached tokens are priced at the input price rather than at zero.
+
+Note that LiteLLM bills every uncached prompt token on Azure/OpenAI as a
+cache *write* at 1.25× the input price. OpenCode now shows what the proxy
+bills, not what the vendor would.
+
+Code: `fetchDeprecatedModelNames` / `filterDeprecated` are replaced by
+`fetchModelInfo` / `applyModelInfo`; `DiscoveryCache.deprecated` is now
+`modelInfo`.
+
 ## 0.4.0
 
 ### Changed: only OpenCode Zen is blocked, not every vendor

@@ -2,9 +2,10 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { PROVIDER_NPM } from "./constants.js"
 import { readStoredApiCredentials, type StoredApiCredential } from "./auth.js"
 import { applyCompliance } from "./compliance.js"
-import { discoverRawModels, fetchDeprecatedModelNames, filterDeprecated, toModelConfig } from "./discovery.js"
+import { applyModelInfo, discoverRawModels, emptyModelInfo, fetchModelInfo, toModelConfig } from "./discovery.js"
 import { parsePluginOptions } from "./options.js"
 import type {
+  ModelInfo,
   LiteLLMModel,
   NeuronProfile,
   OpenCodeConfig,
@@ -25,8 +26,8 @@ type LogLevel = "debug" | "info" | "warn" | "error"
  * the two lookups are cached at different granularities: the model list is
  * per profile (`models`, keyed by profile + URL) since it depends on what
  * that profile's key may call, but which models the proxy has *deprecated*
- * is a property of the proxy itself, independent of which key asks — so
- * `deprecated` is keyed by URL alone. That also means a slow or failing
+ * and what it charges for cached tokens are properties of the proxy itself,
+ * independent of which key asks — so `modelInfo` is keyed by URL alone. That also means a slow or failing
  * `/model/info` call only ever happens once per proxy per process, not once
  * per profile.
  *
@@ -34,11 +35,11 @@ type LogLevel = "debug" | "info" | "warn" | "error"
  */
 export interface DiscoveryCache {
   models: Map<string, Promise<LiteLLMModel[]>>
-  deprecated: Map<string, Promise<Set<string>>>
+  modelInfo: Map<string, Promise<ModelInfo>>
 }
 
 export function createDiscoveryCache(): DiscoveryCache {
-  return { models: new Map(), deprecated: new Map() }
+  return { models: new Map(), modelInfo: new Map() }
 }
 
 interface RuntimeDependencies {
@@ -47,11 +48,7 @@ interface RuntimeDependencies {
     apiKey: string | undefined,
     options: { timeoutMs: number },
   ) => Promise<LiteLLMModel[]>
-  fetchDeprecatedModelNames: (
-    baseURL: string,
-    apiKey: string | undefined,
-    options: { timeoutMs: number },
-  ) => Promise<Set<string>>
+  fetchModelInfo: (baseURL: string, apiKey: string | undefined, options: { timeoutMs: number }) => Promise<ModelInfo>
   readCredentials: () => Promise<Record<string, StoredApiCredential>>
   log: (level: LogLevel, message: string, extra?: Record<string, unknown>) => Promise<void>
   cache?: DiscoveryCache
@@ -131,35 +128,37 @@ function discoverModelsOnce(
 }
 
 /**
- * Which of the proxy's models are deprecated, cached once per `baseURL`
- * (see `DiscoveryCache`). Never rejects: a failed lookup is logged and
- * resolved to an empty set, so a slow or inaccessible `/model/info` costs
- * only deprecation filtering for that proxy, never a profile's model list.
+ * What `/v1/model/info` adds (deprecations, cache prices), cached once per
+ * `baseURL` (see `DiscoveryCache`). Never rejects: a failed lookup is logged
+ * and resolved to an empty `ModelInfo`, so a slow or inaccessible
+ * `/model/info` costs only deprecation filtering and exact cache pricing for
+ * that proxy, never a profile's model list.
  */
-function deprecatedModelNamesOnce(
+function modelInfoOnce(
   baseURL: string,
   apiKey: string | undefined,
   options: ParsedPluginOptions,
   dependencies: RuntimeDependencies,
-): Promise<Set<string>> {
+): Promise<ModelInfo> {
   const run = async () => {
     try {
-      return await dependencies.fetchDeprecatedModelNames(baseURL, apiKey, { timeoutMs: options.timeoutMs })
+      return await dependencies.fetchModelInfo(baseURL, apiKey, { timeoutMs: options.timeoutMs })
     } catch (error) {
-      await dependencies.log("warn", `Deprecated-model lookup failed for ${baseURL}; showing all models`, {
-        baseURL,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return new Set<string>()
+      await dependencies.log(
+        "warn",
+        `Model-info lookup failed for ${baseURL}; showing all models, pricing cached tokens like input`,
+        { baseURL, error: error instanceof Error ? error.message : String(error) },
+      )
+      return emptyModelInfo()
     }
   }
   if (!dependencies.cache) return run()
 
-  const cached = dependencies.cache.deprecated.get(baseURL)
+  const cached = dependencies.cache.modelInfo.get(baseURL)
   if (cached) return cached
 
   const pending = run()
-  dependencies.cache.deprecated.set(baseURL, pending)
+  dependencies.cache.modelInfo.set(baseURL, pending)
   return pending
 }
 
@@ -199,11 +198,11 @@ async function applyDiscovery(
       const provider = ensureProvider(config, profile)
 
       try {
-        const [discovered, deprecated] = await Promise.all([
+        const [discovered, info] = await Promise.all([
           discoverModelsOnce(profile, credential.apiKey, options, dependencies),
-          deprecatedModelNamesOnce(profile.baseURL!, credential.apiKey, options, dependencies),
+          modelInfoOnce(profile.baseURL!, credential.apiKey, options, dependencies),
         ])
-        const models = filterDeprecated(discovered, deprecated)
+        const models = applyModelInfo(discovered, info)
         provider.models ??= {}
         for (const model of models) {
           if (provider.models[model.id]) continue
@@ -284,7 +283,7 @@ export const NeuronPlugin: NeuronPluginFunction = async (input, rawOptions) => {
     config: async (config) => {
       await enhanceConfig(config as unknown as OpenCodeConfig, rawOptions, {
         discoverRawModels,
-        fetchDeprecatedModelNames,
+        fetchModelInfo,
         readCredentials: readStoredApiCredentials,
         log: createLogger(input),
         cache,

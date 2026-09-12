@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createDiscoveryCache, enhanceConfig } from "../src/plugin.js"
 import type { OpenCodeConfig } from "../src/types.js"
 
-const noDeprecations = async () => new Set<string>()
+const noDeprecations = async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() })
 
 describe("enhanceConfig", () => {
   it("creates isolated providers for profiles sharing one proxy", async () => {
@@ -21,7 +21,7 @@ describe("enhanceConfig", () => {
       },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({
           "proxy-a": { key: "key-a", baseURL: "https://proxy.example/v1" },
           "proxy-b": { key: "key-b", baseURL: "https://proxy.example/v1" },
@@ -56,7 +56,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "swissmon", name: "swissMon", baseURL: "https://proxy.example/v1" }] },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({ swissmon: { key: "key", baseURL: "https://proxy.example/v1" } }),
         log: async () => undefined,
       },
@@ -92,7 +92,7 @@ describe("enhanceConfig", () => {
       },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({
           "neuron-team": { key: "bound-key", baseURL: "https://proxy.example/v1" },
         }),
@@ -118,7 +118,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: async () => new Set(["gpt-4-old"]),
+        fetchModelInfo: async () => ({ deprecated: new Set(["gpt-4-old"]), cacheCosts: new Map() }),
         readCredentials: async () => ({}),
         log: async () => undefined,
       },
@@ -140,7 +140,7 @@ describe("enhanceConfig", () => {
         discoverRawModels: async () => {
           throw new Error("offline")
         },
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({}),
         log,
       },
@@ -160,7 +160,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: async () => {
+        fetchModelInfo: async () => {
           throw new Error("HTTP 403 Forbidden")
         },
         readCredentials: async () => ({}),
@@ -171,7 +171,7 @@ describe("enhanceConfig", () => {
     expect(config.provider?.neuron?.models).toEqual({ "still-here": { name: "still-here" } })
     expect(log).toHaveBeenCalledWith(
       "warn",
-      "Deprecated-model lookup failed for https://proxy.example/v1; showing all models",
+      "Model-info lookup failed for https://proxy.example/v1; showing all models, pricing cached tokens like input",
       expect.objectContaining({ error: "HTTP 403 Forbidden" }),
     )
   })
@@ -193,7 +193,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "team", name: "Team", baseURL: "https://attacker.example/v1" }] },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({
           team: { key: "real-secret", baseURL: "https://trusted.example/v1" },
         }),
@@ -218,7 +218,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "legacy", name: "Legacy", baseURL: "https://proxy.example/v1" }] },
       {
         discoverRawModels,
-        fetchDeprecatedModelNames: noDeprecations,
+        fetchModelInfo: noDeprecations,
         readCredentials: async () => ({ legacy: { key: "legacy-key" } }),
         log: async () => undefined,
       },
@@ -240,7 +240,7 @@ describe("discovery cache", () => {
     }
     const dependencies = {
       discoverRawModels,
-      fetchDeprecatedModelNames: noDeprecations,
+      fetchModelInfo: noDeprecations,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -265,7 +265,7 @@ describe("discovery cache", () => {
     const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
     const dependencies = {
       discoverRawModels,
-      fetchDeprecatedModelNames: noDeprecations,
+      fetchModelInfo: noDeprecations,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -284,7 +284,7 @@ describe("discovery cache", () => {
     const cache = createDiscoveryCache()
     const dependencies = {
       discoverRawModels,
-      fetchDeprecatedModelNames: noDeprecations,
+      fetchModelInfo: noDeprecations,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -314,7 +314,7 @@ describe("discovery cache", () => {
     const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
     const dependencies = {
       discoverRawModels,
-      fetchDeprecatedModelNames: noDeprecations,
+      fetchModelInfo: noDeprecations,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -327,7 +327,7 @@ describe("discovery cache", () => {
   })
 
   it("fetches deprecated names once per baseURL, not once per profile", async () => {
-    const fetchDeprecatedModelNames = vi.fn(async () => new Set<string>())
+    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() }))
     const cache = createDiscoveryCache()
     const options = {
       profiles: [
@@ -337,7 +337,7 @@ describe("discovery cache", () => {
     }
     const dependencies = {
       discoverRawModels: async (baseURL: string) => [{ id: `model-${baseURL}` }],
-      fetchDeprecatedModelNames,
+      fetchModelInfo,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -345,16 +345,16 @@ describe("discovery cache", () => {
 
     await enhanceConfig({}, options, dependencies)
 
-    expect(fetchDeprecatedModelNames).toHaveBeenCalledTimes(1)
+    expect(fetchModelInfo).toHaveBeenCalledTimes(1)
   })
 
   it("reuses the cached deprecation lookup across repeated hook calls", async () => {
-    const fetchDeprecatedModelNames = vi.fn(async () => new Set<string>())
+    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() }))
     const cache = createDiscoveryCache()
     const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
     const dependencies = {
       discoverRawModels: async () => [{ id: "model" }],
-      fetchDeprecatedModelNames,
+      fetchModelInfo,
       readCredentials: async () => ({}),
       log: async () => undefined,
       cache,
@@ -363,11 +363,11 @@ describe("discovery cache", () => {
     await enhanceConfig({}, options, dependencies)
     await enhanceConfig({}, options, dependencies)
 
-    expect(fetchDeprecatedModelNames).toHaveBeenCalledTimes(1)
+    expect(fetchModelInfo).toHaveBeenCalledTimes(1)
   })
 
   it("logs the deprecation-lookup failure only once when it is cached per baseURL", async () => {
-    const fetchDeprecatedModelNames = vi.fn(async () => {
+    const fetchModelInfo = vi.fn(async () => {
       throw new Error("HTTP 403 Forbidden")
     })
     const log = vi.fn(async () => undefined)
@@ -380,7 +380,7 @@ describe("discovery cache", () => {
     }
     const dependencies = {
       discoverRawModels: async (baseURL: string) => [{ id: `model-${baseURL}` }],
-      fetchDeprecatedModelNames,
+      fetchModelInfo,
       readCredentials: async () => ({}),
       log,
       cache,
@@ -388,7 +388,7 @@ describe("discovery cache", () => {
 
     await enhanceConfig({}, options, dependencies)
 
-    expect(fetchDeprecatedModelNames).toHaveBeenCalledTimes(1)
-    expect(log.mock.calls.filter(([, message]) => String(message).startsWith("Deprecated-model lookup failed"))).toHaveLength(1)
+    expect(fetchModelInfo).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls.filter(([, message]) => String(message).startsWith("Model-info lookup failed"))).toHaveLength(1)
   })
 })

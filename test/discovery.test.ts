@@ -87,7 +87,9 @@ describe("discoverModels via /model_group/info", () => {
         output_cost_per_million: 15,
       },
     ])
-    expect(toModelConfig(models[0]!).cost).toEqual({ input: 3, output: 15 })
+    // Without /model/info cache prices, cached tokens are priced like input: too
+    // high beats OpenCode's default of free.
+    expect(toModelConfig(models[0]!).cost).toEqual({ input: 3, output: 15, cache_read: 3, cache_write: 3 })
   })
 
   it("keeps a free model's zero price instead of dropping it", async () => {
@@ -100,7 +102,7 @@ describe("discoverModels via /model_group/info", () => {
 
     const [model] = await discover(fetchMock)
 
-    expect(toModelConfig(model!).cost).toEqual({ input: 0, output: 0 })
+    expect(toModelConfig(model!).cost).toEqual({ input: 0, output: 0, cache_read: 0, cache_write: 0 })
   })
 
   it("takes reasoning from the flag rather than the model id", async () => {
@@ -409,5 +411,82 @@ describe("toModelConfig", () => {
 
   it("leaves the provider's own adapter alone when mode is unknown", () => {
     expect(toModelConfig({ id: "no-mode-model" }).provider).toBeUndefined()
+  })
+})
+
+describe("discoverModels cache pricing from /v1/model/info", () => {
+  it("prices cache reads and writes from /v1/model/info, which /model_group/info lacks", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () =>
+        jsonResponse({
+          data: [{ model_group: "gpt-6-astra", input_cost_per_token: 0.00001, output_cost_per_token: 0.00005 }],
+        }),
+      modelInfo: () =>
+        jsonResponse({
+          data: [
+            {
+              model_name: "gpt-6-astra",
+              model_info: { cache_read_input_token_cost: 0.000001, cache_creation_input_token_cost: 0.0000125 },
+            },
+          ],
+        }),
+    })
+
+    const [model] = await discover(fetchMock)
+
+    expect(model).toEqual({
+      id: "gpt-6-astra",
+      input_cost_per_million: 10,
+      output_cost_per_million: 50,
+      cache_read_cost_per_million: 1,
+      cache_write_cost_per_million: 12.5,
+    })
+    expect(toModelConfig(model!).cost).toEqual({ input: 10, output: 50, cache_read: 1, cache_write: 12.5 })
+  })
+
+  it("takes the most expensive deployment under an alias, as /model_group/info does for input", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () =>
+        jsonResponse({
+          data: [{ model_group: "gpt-5.6-sol", input_cost_per_token: 0.0000055, output_cost_per_token: 0.000033 }],
+        }),
+      modelInfo: () =>
+        jsonResponse({
+          data: [
+            { model_name: "gpt-5.6-sol", model_info: { cache_read_input_token_cost: 0.0000005 } },
+            { model_name: "gpt-5.6-sol", model_info: { cache_read_input_token_cost: 0.00000055 } },
+          ],
+        }),
+    })
+
+    const [model] = await discover(fetchMock)
+
+    expect(toModelConfig(model!).cost).toEqual({ input: 5.5, output: 33, cache_read: 0.55, cache_write: 5.5 })
+  })
+
+  it("prices cache like input when the /v1/model/info lookup fails", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () =>
+        jsonResponse({
+          data: [{ model_group: "gpt-6-astra", input_cost_per_token: 0.00001, output_cost_per_token: 0.00005 }],
+        }),
+      modelInfo: () => new Response(null, { status: 403, statusText: "Forbidden" }),
+    })
+
+    const [model] = await discover(fetchMock)
+
+    expect(toModelConfig(model!).cost).toEqual({ input: 10, output: 50, cache_read: 10, cache_write: 10 })
+  })
+
+  it("emits no cost at all when the proxy reports no input/output price", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "unpriced" }] }),
+      modelInfo: () =>
+        jsonResponse({ data: [{ model_name: "unpriced", model_info: { cache_read_input_token_cost: 0.000001 } }] }),
+    })
+
+    const [model] = await discover(fetchMock)
+
+    expect(toModelConfig(model!).cost).toBeUndefined()
   })
 })

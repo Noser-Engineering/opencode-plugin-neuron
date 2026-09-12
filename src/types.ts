@@ -32,6 +32,24 @@ export interface LiteLLMModel {
   supports_pdf_input?: boolean
   input_cost_per_million?: number
   output_cost_per_million?: number
+  /** From /v1/model/info only; see `fetchModelInfo`. */
+  cache_read_cost_per_million?: number
+  cache_write_cost_per_million?: number
+}
+
+/**
+ * What `/v1/model/info` knows that the model-list endpoints do not, keyed
+ * by alias (`model_name`).
+ */
+export interface ModelInfo {
+  deprecated: Set<string>
+  cacheCosts: Map<string, CacheCosts>
+}
+
+/** Per million tokens. Either side may be missing when LiteLLM prices only one. */
+export interface CacheCosts {
+  read?: number
+  write?: number
 }
 
 export interface ModelConfig {
@@ -43,6 +61,8 @@ export interface ModelConfig {
   cost?: {
     input: number
     output: number
+    cache_read: number
+    cache_write: number
   }
   limit?: {
     context: number
