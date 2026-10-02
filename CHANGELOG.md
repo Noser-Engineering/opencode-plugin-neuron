@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.5.0)
+## 0.5.0
 
 - OpenCode 2.x support through a second entrypoint (`exports["./server"]`). OpenCode 1.x keeps loading the unchanged v1 entry. OpenCode 2 users get it only once a version containing `./server` is published; npm 0.4.1 has none.
 - Setup detects the installed OpenCode major (`--opencode-version <1|2>` overrides), writes the matching config shape, migrates an existing v1 `plugin` entry into `plugins`, and stores API keys through `opencode api credential.*` on v2.
