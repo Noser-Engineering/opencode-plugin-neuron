@@ -6,3 +6,5 @@ release-binaries/
 *.tgz
 *.bun-build
 .DS_Store
+.claude/worktrees/
+.superpowers/
