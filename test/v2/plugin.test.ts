@@ -269,6 +269,26 @@ describe("setupNeuron", () => {
     await cleanup()
   })
 
+  it("re-fetches model info after a credential change", async () => {
+    const ctx = new FakeContext({ profiles: [PROFILE] }, {})
+    const fetchInfo = vi.fn(async (_url: string, key: string | undefined) => {
+      if (!key) throw new Error("401")
+      return { deprecated: new Set(["old"]), cacheCosts: new Map() }
+    })
+
+    const cleanup = await setupNeuron(ctx, deps({ discoverRawModels: async () => [{ id: "old" }, { id: "new" }], fetchModelInfo: fetchInfo }))
+    expect(ctx.rebuild().providers.get("work")?.models.map((m) => m.id)).toEqual(["old", "new"])
+
+    ctx.setCredentials({ work: { type: "key", key: "sk-1" } })
+    ctx.integration.connection.resolve = async () => ({ type: "key", key: "sk-1", metadata: { baseURL: PROFILE.baseURL } })
+    ctx.emit("credential.updated")
+    await flush()
+
+    expect(fetchInfo).toHaveBeenCalledTimes(2)
+    expect(ctx.rebuild().providers.get("work")?.models.map((m) => m.id)).toEqual(["new"])
+    await cleanup()
+  })
+
   it("serialises overlapping credential events", async () => {
     const ctx = new FakeContext({ profiles: [PROFILE] }, {})
     let inFlight = 0

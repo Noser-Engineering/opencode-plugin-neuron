@@ -220,7 +220,10 @@ export async function setupNeuron(ctx: NeuronContext, dependencies: V2Dependenci
         if (event.type !== "credential.updated") continue
         chain = chain.then(async () => {
           if (controller.signal.aborted) return
+          // The credential may change what /model/info answers too (a failed
+          // unauthenticated lookup must not stick), so drop both caches.
           cache.models.clear()
+          cache.modelInfo.clear()
           await refresh()
         })
       }
