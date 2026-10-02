@@ -17,3 +17,17 @@ export const PROVIDER_NPM = "@ai-sdk/openai-compatible"
  */
 export const RESPONSES_API_NPM = "@ai-sdk/openai"
 export const CONFIG_SCHEMA = "https://opencode.ai/config.json"
+
+/** OpenCode 2.x plugin id, shown in `opencode plugin list`. */
+export const PLUGIN_ID = "neuron"
+/** OpenCode 2.x adapters. v2 moved the AI SDK adapters into its own package. */
+export const PROVIDER_PACKAGE_V2 = "@opencode/ai/providers/openai-compatible"
+export const RESPONSES_API_PACKAGE_V2 = "@opencode/ai/providers/openai"
+/**
+ * OpenCode 2.x requires `limit` on every model. These stand in when the proxy
+ * reports nothing: 128k is the common context size today, and 32k output
+ * matches the cap OpenCode 1.x applied on its own when the plugin omitted
+ * `limit`.
+ */
+export const DEFAULT_CONTEXT_LIMIT = 128_000
+export const DEFAULT_OUTPUT_LIMIT = 32_000
