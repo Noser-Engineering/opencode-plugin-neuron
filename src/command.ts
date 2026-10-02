@@ -1,15 +1,20 @@
+import { resolveAuthPath } from "./auth.js"
+import type { StoredApiCredential } from "./auth.js"
 import {
-  extractApiCredentials,
-  readAuthStore,
-  resolveAuthPath,
-  updateApiCredentials,
-  type StoredApiCredential,
-} from "./auth.js"
+  fileCredentialStore,
+  OpenCodeNotFoundError,
+  opencodeCredentialStore,
+  runOpenCodeBinary,
+  type CredentialStore,
+  type RunOpenCode,
+} from "./credential-store.js"
 import { discoverModels } from "./discovery.js"
 import { normalizeBaseURL, slugifyProviderID, validateProfile } from "./options.js"
 import { Prompts } from "./prompts.js"
 import {
+  detectConfigVersion,
   parseConfigText,
+  parseOpenCodeVersion,
   PINNED_PACKAGE_SPEC,
   readConfigText,
   readNeuronConfigEntry,
@@ -17,12 +22,13 @@ import {
   updateConfigText,
   writeConfigText,
   type ConfigScope,
+  type OpenCodeMajor,
 } from "./setup.js"
 import type { NeuronProfile } from "./types.js"
 
 export const API_KEY_ENV = "NEURON_API_KEY"
 const MAX_URL_ATTEMPTS = 5
-const VALUE_FLAGS = new Set(["--name", "--url", "--key"])
+const VALUE_FLAGS = new Set(["--name", "--url", "--key", "--opencode-version"])
 
 export interface CliArgs {
   help: boolean
@@ -31,6 +37,7 @@ export interface CliArgs {
   name?: string
   url?: string
   key?: string
+  opencodeVersion?: OpenCodeMajor
 }
 
 export interface ApiKeySource {
@@ -58,6 +65,7 @@ Options:
   --url <url>      LiteLLM base URL; enables the non-interactive mode
   --key <key>      API key; visible in the shell history and in process lists
   --key-stdin      Read the API key from stdin; requires --url
+  --opencode-version <1|2>  Which OpenCode major to configure; detected otherwise
   --help           Show this help
 
 The API key can also be passed in ${API_KEY_ENV}, which avoids both the prompt
@@ -101,7 +109,10 @@ export function parseArgs(argv: string[]): CliArgs {
       if (inlineValue === undefined) index += 1
       if (flag === "--name") args.name = value
       else if (flag === "--url") args.url = value
-      else args.key = value
+      else if (flag === "--opencode-version") {
+        if (value !== "1" && value !== "2") throw new Error("--opencode-version must be 1 or 2")
+        args.opencodeVersion = value === "2" ? 2 : 1
+      } else args.key = value
       continue
     }
 
@@ -165,36 +176,94 @@ export interface SetupState {
   configPath: string
   configText: string
   profiles: NeuronProfile[]
-  authPath: string
+  version: OpenCodeMajor
+  credentials: CredentialStore
   storedCredentials: Record<string, StoredApiCredential>
   credentialUpdates: Record<string, StoredApiCredential>
   credentialRemovals: Set<string>
 }
 
-async function loadState(scope: ConfigScope): Promise<SetupState> {
+export interface VersionProbe {
+  configVersion?: OpenCodeMajor
+  binaryOutput: () => Promise<string | undefined>
+  ask: () => Promise<OpenCodeMajor>
+}
+
+/** Flag, then the config file's own shape, then `opencode --version`, then the user. */
+export async function resolveOpenCodeVersion(args: CliArgs, probe: VersionProbe): Promise<OpenCodeMajor> {
+  if (args.opencodeVersion) return args.opencodeVersion
+  if (probe.configVersion) return probe.configVersion
+  const fromBinary = parseOpenCodeVersion((await probe.binaryOutput()) ?? "")
+  if (fromBinary) return fromBinary
+  return probe.ask()
+}
+
+async function binaryVersionOutput(run: RunOpenCode): Promise<string | undefined> {
+  try {
+    return await run(["--version"])
+  } catch {
+    return undefined
+  }
+}
+
+export async function chooseCredentialStore(
+  version: OpenCodeMajor,
+  authPath: string,
+  run: RunOpenCode = runOpenCodeBinary,
+): Promise<CredentialStore> {
+  if (version === 1) return fileCredentialStore(authPath)
+  const store = opencodeCredentialStore(run)
+  try {
+    await store.read()
+    return store
+  } catch (error) {
+    if (!(error instanceof OpenCodeNotFoundError)) throw error
+    process.stdout.write(
+      "[warn] opencode is not on PATH; writing the key to auth.json instead. OpenCode 2 imports auth.json only on its first start, so run `opencode auth login` if the key does not show up.\n",
+    )
+    return fileCredentialStore(authPath)
+  }
+}
+
+async function loadState(scope: ConfigScope, args: CliArgs, prompts?: PromptPort): Promise<SetupState> {
   const configPath = await resolveConfigPath(scope)
   const configText = await readConfigText(configPath)
   const config = parseConfigText(configText, configPath)
-  const authPath = resolveAuthPath()
+  const configVersion = detectConfigVersion(config)
+  const version = await resolveOpenCodeVersion(args, {
+    ...(configVersion ? { configVersion } : {}),
+    binaryOutput: () => binaryVersionOutput(runOpenCodeBinary),
+    ask: async () => {
+      if (!prompts) throw new Error("Could not detect the OpenCode version; pass --opencode-version 1 or 2")
+      return (await prompts.select("Which OpenCode version is installed?", ["OpenCode 2.x", "OpenCode 1.x"])) === 0 ? 2 : 1
+    },
+  })
+  const credentials = await chooseCredentialStore(version, resolveAuthPath())
   return {
     configPath,
     configText,
     profiles: [...(readNeuronConfigEntry(config)?.profiles ?? [])],
-    authPath,
-    storedCredentials: extractApiCredentials(await readAuthStore(authPath)),
+    version,
+    credentials,
+    storedCredentials: await credentials.read(),
     credentialUpdates: {},
     credentialRemovals: new Set<string>(),
   }
 }
 
 async function persist(state: SetupState): Promise<void> {
-  await writeConfigText(state.configPath, updateConfigText(state.configText, state.profiles, state.configPath))
+  await writeConfigText(
+    state.configPath,
+    updateConfigText(state.configText, state.profiles, state.configPath, state.version),
+  )
   if (Object.keys(state.credentialUpdates).length || state.credentialRemovals.size) {
-    await updateApiCredentials(state.credentialUpdates, state.credentialRemovals, state.authPath)
+    await state.credentials.write(state.credentialUpdates, state.credentialRemovals)
   }
   const count = state.profiles.length
-  process.stdout.write(`\n[ok] Configured ${count} LiteLLM profile${count === 1 ? "" : "s"}.\n`)
-  process.stdout.write(`Plugin pinned to ${PINNED_PACKAGE_SPEC}; rerun setup to update.\n`)
+  process.stdout.write(`\n[ok] Configured ${count} LiteLLM profile${count === 1 ? "" : "s"} for OpenCode ${state.version}.x.\n`)
+  if (state.version === 1) process.stdout.write(`Plugin pinned to ${PINNED_PACKAGE_SPEC}; rerun setup to update.\n`)
+  else process.stdout.write("Plugin added unpinned; `opencode plugin update` picks up new versions.\n")
+  process.stdout.write(`API keys: ${state.credentials.description}\n`)
   process.stdout.write("Quit and restart OpenCode, then use /models to select a model.\n")
 }
 
@@ -281,7 +350,7 @@ async function runNonInteractive(args: CliArgs, apiKey: ApiKeySource): Promise<v
       prompts.close()
     }
   }
-  const state = await loadState(args.scope!)
+  const state = await loadState(args.scope!, args)
   const name = args.name ?? defaultProfileName(state.profiles)
   const providerID = slugifyProviderID(name)
   const baseURL = parseBaseURL(args.url!, "--url")
@@ -356,7 +425,7 @@ async function runInteractive(args: CliArgs, apiKey: ApiKeySource): Promise<void
   const prompts = new Prompts()
   try {
     const scope = args.scope ?? (await promptScope(prompts))
-    const state = await loadState(scope)
+    const state = await loadState(scope, args, prompts)
 
     process.stdout.write(`\nConfig: ${state.configPath}\n`)
     if (state.profiles.length) {

@@ -1,12 +1,15 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   API_KEY_ENV,
+  chooseCredentialStore,
   configureProfile,
   parseArgs,
   resolveApiKey,
+  resolveOpenCodeVersion,
   type DiscoverModels,
   type SetupState,
 } from "../src/command.js"
+import { OpenCodeNotFoundError } from "../src/credential-store.js"
 
 class FakePrompts {
   readonly asked: string[] = []
@@ -43,7 +46,12 @@ function emptyState(): SetupState {
     configPath: "opencode.jsonc",
     configText: "{}\n",
     profiles: [],
-    authPath: "auth.json",
+    version: 1,
+    credentials: {
+      description: "memory",
+      read: async () => ({}),
+      write: async () => undefined,
+    },
     storedCredentials: {},
     credentialUpdates: {},
     credentialRemovals: new Set<string>(),
@@ -194,5 +202,79 @@ describe("resolveApiKey", () => {
       origin: "stdin",
     })
     await expect(resolveApiKey({ ...base, keyStdin: true }, {}, async () => "")).rejects.toThrow("stdin was empty")
+  })
+})
+
+describe("parseArgs --opencode-version", () => {
+  it("accepts 1 and 2", () => {
+    expect(parseArgs(["setup", "--opencode-version", "2"]).opencodeVersion).toBe(2)
+    expect(parseArgs(["setup", "--opencode-version=1"]).opencodeVersion).toBe(1)
+  })
+
+  it("rejects anything else", () => {
+    expect(() => parseArgs(["setup", "--opencode-version", "3"])).toThrow("--opencode-version must be 1 or 2")
+    expect(() => parseArgs(["setup", "--opencode-version", "v2"])).toThrow("--opencode-version must be 1 or 2")
+  })
+})
+
+describe("resolveOpenCodeVersion", () => {
+  const noAsk = async (): Promise<1 | 2> => {
+    throw new Error("should not ask")
+  }
+
+  it("prefers the flag", async () => {
+    const binary = vi.fn(async () => "opencode v2.0.22")
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false, opencodeVersion: 1 }, { configVersion: 2, binaryOutput: binary, ask: noAsk })).toBe(1)
+    expect(binary).not.toHaveBeenCalled()
+  })
+
+  it("then the config shape", async () => {
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 1, binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(1)
+  })
+
+  it("then the binary", async () => {
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(2)
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => "1.18.30", ask: noAsk })).toBe(1)
+  })
+
+  it("asks when nothing else knows", async () => {
+    const ask = vi.fn(async (): Promise<1 | 2> => 2)
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => undefined, ask })).toBe(2)
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("chooseCredentialStore", () => {
+  it("uses auth.json for OpenCode 1 without probing the binary", async () => {
+    const run = vi.fn()
+    const store = await chooseCredentialStore(1, "/tmp/auth.json", run)
+    expect(store.description).toBe("/tmp/auth.json")
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it("uses the opencode CLI for OpenCode 2", async () => {
+    const run = vi.fn(async () => JSON.stringify({ data: [] }))
+    const store = await chooseCredentialStore(2, "/tmp/auth.json", run)
+    expect(store.description).toContain("opencode api credential")
+    expect(await store.read()).toEqual({})
+  })
+
+  it("falls back to auth.json when the binary is missing", async () => {
+    const run = vi.fn(async () => {
+      throw new OpenCodeNotFoundError()
+    })
+    const writes: string[] = []
+    const original = process.stdout.write.bind(process.stdout)
+    process.stdout.write = ((chunk: string) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const store = await chooseCredentialStore(2, "/tmp/auth.json", run)
+      expect(store.description).toBe("/tmp/auth.json")
+    } finally {
+      process.stdout.write = original
+    }
+    expect(writes.join("")).toContain("imports auth.json only on its first start")
   })
 })
