@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./server": {
+      "types": "./dist/v2.d.ts",
+      "import": "./dist/v2.js"
+    },
     "./setup": {
       "types": "./dist/setup.d.ts",
       "import": "./dist/setup.js"
@@ -60,6 +64,7 @@
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.18.3",
+    "@opencode/plugin": "^2.0.22",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
