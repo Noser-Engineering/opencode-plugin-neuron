@@ -64,6 +64,17 @@ API keys entered directly are stored in OpenCode's standard credential file; the
 
 Quit and restart OpenCode after setup, then run `/models`.
 
+## OpenCode 2.x
+
+The package ships two entrypoints. OpenCode 1.x loads `.` (the `plugin` config key, pinned version). OpenCode 2.x loads `./server` (the `plugins` config key, unpinned; `opencode plugin update` picks up new versions). The setup command detects the installed major from the config file, then from `opencode --version`, and asks if neither tells; `--opencode-version <1|2>` overrides. `opencode plugin list` reads only the global config, so a project-level `plugins` entry does not show up there.
+
+What changes on OpenCode 2:
+
+- API keys live in OpenCode's credential store, not in `auth.json`. Setup writes them through the `opencode` CLI, so it has to be on `PATH`; otherwise setup falls back to `auth.json` with a warning, which OpenCode 2 imports only on its very first start. `opencode api credential.list` shows the stored credential. You can also connect a profile from inside OpenCode with `/connect`, where the profile is offered; the plugin picks the key up without a restart.
+- A key stored for a profile whose URL changed is ignored, with a warning in the log, exactly as before.
+- The compliance layer removes OpenCode Zen (`opencode`, `opencode-go`) and any `denyProviders` entry unless the provider is declared under `providers` in `opencode.json`, and appends the permission baseline to every agent (`bash` is `shell` in v2). OpenCode 2 merges built-in defaults and your own `permissions` into one list, so the baseline also overrides a conflicting rule of yours for the same resource; set `enforce: false` if a project needs that.
+- A v2 plugin cannot set `share` or `update`. Setup writes `"share": "disabled"` and `"update": "notify"` into the config it edits, only when they are absent. Removing them is your call, and the plugin will not put them back.
+
 ## Skipping prompts
 
 Every flag skips its own question, so `npx @noser-engineering/opencode-plugin-neuron setup --global` only asks about the profile itself:
@@ -152,12 +163,11 @@ Everything else stays available. A Claude, Codex or GitHub Copilot licence you b
 
 **Declaring a provider is how you approve it.** OpenCode fills `config.provider` from configuration files only, never from an autoloaded credential, so a blocked provider that is named in `opencode.json` is unblocked again:
 
-```json
-{
-  "provider": {
-    "opencode": {}
-  }
-}
+```jsonc
+// OpenCode 1.x
+{ "provider": { "opencode": {} } }
+// OpenCode 2.x
+{ "providers": { "opencode": {} } }
 ```
 
 That is deliberate and not a hole to be plugged. The goal is to stop an accident, not to stop a decision.

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (0.5.0)
+
+- OpenCode 2.x support through a second entrypoint (`exports["./server"]`). OpenCode 1.x keeps loading the unchanged v1 entry. OpenCode 2 users get it only once a version containing `./server` is published; npm 0.4.1 has none.
+- Setup detects the installed OpenCode major (`--opencode-version <1|2>` overrides), writes the matching config shape, migrates an existing v1 `plugin` entry into `plugins`, and stores API keys through `opencode api credential.*` on v2.
+- On OpenCode 2 the plugin re-runs discovery when a credential changes, so `/connect` works without a restart.
+- Compliance on OpenCode 2: Zen is removed via a provider transform unless declared under `providers`; the permission baseline is appended to every agent; `share: "disabled"` and `update: "notify"` are written by setup because a v2 plugin cannot set them.
+
 ## 0.4.1
 
 ### Fixed: session cost in OpenCode was 10–50× too low

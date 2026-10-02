@@ -12,6 +12,8 @@
 npx @noser-engineering/opencode-plugin-neuron setup --global
 ```
 
+**OpenCode 2.x:** Das Setup erkennt die installierte Version automatisch (`--opencode-version <1|2>` erzwingt sie). Damit der API-Key gespeichert wird, muss `opencode` im `PATH` liegen; fehlt es, landet der Key mit einer Warnung in `auth.json`, das OpenCode 2 nur beim allerersten Start übernimmt. Alternativ in OpenCode `/connect` ausführen und das Profil wählen, der Key wird ohne Neustart übernommen. Updates des Plugins holt `opencode plugin update`.
+
 ### Ohne Node.js installieren
 
 Kein Node.js auf dem Rechner? Dann eines der folgenden Binaries installieren — danach überall unten `opencode-neuron` statt `npx @noser-engineering/opencode-plugin-neuron` verwenden:
