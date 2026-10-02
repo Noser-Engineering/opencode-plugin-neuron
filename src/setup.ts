@@ -5,6 +5,7 @@ import {
   applyEdits,
   modify,
   parse,
+  createScanner,
   parseTree,
   printParseErrorCode,
   type FormattingOptions,
@@ -238,31 +239,63 @@ function updateConfigTextV1(text: string, profiles: NeuronProfile[], filePath: s
   return `${updated.trimEnd()}\n`
 }
 
+// jsonc-parser's SyntaxKind is an ambient const enum, which verbatimModuleSyntax cannot import.
+const TOKEN = { closeBrace: 2, comma: 5, lineComment: 12, blockComment: 13, lineBreak: 14, trivia: 15, eof: 17 } as const
+
+function isTrivia(kind: number): boolean {
+  return (
+    kind === TOKEN.trivia ||
+    kind === TOKEN.lineBreak ||
+    kind === TOKEN.lineComment ||
+    kind === TOKEN.blockComment
+  )
+}
+
 /**
- * Remove a top-level property while leaving comments around it alone;
- * `modify(..., undefined)` also swallows a comment that precedes the property.
- * Falls back to `modify` when a comment sits where a separating comma would go.
+ * Remove a top-level property, keeping every comment: `modify(..., undefined)`
+ * also swallows a comment that precedes the property. Two ranges are deleted,
+ * the property itself and one separating comma. The comma is the first token
+ * after the property when there is one (scanning past whitespace and comments),
+ * otherwise the last token before it, so the result has no dangling comma.
+ * Anything the scanner does not find where expected falls back to `modify`.
  */
 function removeTopLevelProperty(text: string, key: string, formattingOptions: FormattingOptions): string {
   const root = parseTree(text, [], { allowTrailingComma: true })
   const property = root?.children?.find((child) => child.type === "property" && child.children?.[0]?.value === key)
-  if (property) {
-    let start = property.offset
-    let end = property.offset + property.length
-    while (start > 0 && (text[start - 1] === " " || text[start - 1] === "\t")) start--
-    let after = end
-    while (after < text.length && /\s/.test(text[after]!)) after++
-    if (text[after] === ",") {
-      end = after + 1
-      while (end < text.length && (text[end] === " " || text[end] === "\t")) end++
-      if (text[end] === "\n") end++
-      else if (text[end] === "\r" && text[end + 1] === "\n") end += 2
-      return text.slice(0, start) + text.slice(end)
+  if (root && property) {
+    const start = property.offset
+    const end = property.offset + property.length
+    const scanner = createScanner(text, false)
+
+    scanner.setPosition(end)
+    let next = scanner.scan()
+    while (isTrivia(next)) next = scanner.scan()
+    let comma: number | undefined
+    if (next === TOKEN.comma) {
+      comma = scanner.getTokenOffset()
+    } else if (next === TOKEN.closeBrace) {
+      scanner.setPosition(root.offset + 1)
+      let kind = scanner.scan()
+      let previous: { kind: number; offset: number } | undefined
+      while (kind !== TOKEN.eof && scanner.getTokenOffset() < start) {
+        if (!isTrivia(kind)) previous = { kind, offset: scanner.getTokenOffset() }
+        kind = scanner.scan()
+      }
+      if (!previous) comma = undefined
+      else if (previous.kind === TOKEN.comma) comma = previous.offset
+      else comma = -1
+    } else {
+      comma = -1
     }
-    let before = start
-    while (before > 0 && /\s/.test(text[before - 1]!)) before--
-    if (text[before - 1] === "{") return text.slice(0, before) + text.slice(end)
-    if (text[before - 1] === ",") return text.slice(0, before - 1) + text.slice(end)
+
+    if (comma !== -1) {
+      // Delete the later range first so the earlier offsets stay valid.
+      const ranges = [[start, end] as const, ...(comma === undefined ? [] : [[comma, comma + 1] as const])]
+      ranges.sort((a, b) => b[0] - a[0])
+      let result = text
+      for (const [from, to] of ranges) result = result.slice(0, from) + result.slice(to)
+      return result
+    }
   }
   return applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
 }
@@ -302,7 +335,14 @@ function updateConfigTextV2(text: string, profiles: NeuronProfile[], filePath: s
   // the v1 guarantees. Only when absent: an explicit choice stays an explicit choice.
   if (config.share === undefined) edit(["share"], "disabled")
   if (config.update === undefined) edit(["update"], "notify")
-  return `${updated.trimEnd()}\n`
+  const result = `${updated.trimEnd()}\n`
+  // The text is written to the user's config as is; never let an invalid edit out.
+  try {
+    parseConfigText(result, filePath)
+  } catch (error) {
+    throw new Error(`${filePath}: refusing to write, the edited config is invalid (${(error as Error).message})`)
+  }
+  return result
 }
 
 export function updateConfigText(

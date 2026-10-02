@@ -219,4 +219,55 @@ describe("OpenCode 2 config setup", () => {
   it("rejects a plugins value that is not an array", () => {
     expect(() => updateConfigText(JSON.stringify({ plugins: {} }), [], "opencode.json", 2)).toThrow("plugins must be an array")
   })
+
+  describe("dropping an emptied plugin array", () => {
+    const profiles = [{ id: "work", name: "Work", baseURL: "https://proxy.example/v1" }]
+    const v1 = `"plugin": [["@noser-engineering/opencode-plugin-neuron@0.4.1", { "profiles": [] }]]`
+    const migrate = (text: string) => {
+      const updated = updateConfigText(text, profiles, "opencode.jsonc", 2)
+      const config = parseConfigText(updated)
+      expect(config).not.toHaveProperty("plugin")
+      expect(config.plugins).toEqual([
+        "opencode-wakatime",
+        { package: "@noser-engineering/opencode-plugin-neuron", options: { profiles } },
+      ])
+      return updated
+    }
+
+    it("handles a first property with a block comment before the comma", () => {
+      const updated = migrate(`{\n  ${v1} /* c */,\n  "plugins": ["opencode-wakatime"]\n}`)
+      expect(updated).toContain("/* c */")
+    })
+
+    it("handles a first property with a line comment before the comma", () => {
+      const updated = migrate(`{\n  ${v1} // c\n  ,\n  "plugins": ["opencode-wakatime"]\n}`)
+      expect(updated).toContain("// c")
+    })
+
+    it("handles a property in the middle", () => {
+      const updated = migrate(`{\n  "model": "x",\n  ${v1},\n  "plugins": ["opencode-wakatime"]\n}`)
+      expect(parseConfigText(updated).model).toBe("x")
+    })
+
+    it("handles a last property without a trailing comma", () => {
+      const updated = migrate(`{\n  "plugins": ["opencode-wakatime"],\n  ${v1}\n}`)
+      expect(updated).not.toMatch(/,\s*\}/)
+    })
+
+    it("handles a last property with a trailing comma", () => {
+      migrate(`{\n  "plugins": ["opencode-wakatime"],\n  ${v1},\n}`)
+    })
+
+    it("keeps a comment line before a last property", () => {
+      const updated = migrate(`{\n  "plugins": ["opencode-wakatime"],\n  // old\n  ${v1}\n}`)
+      expect(updated).toContain("// old")
+    })
+
+    it("handles CRLF input with a comment", () => {
+      const text = `{\r\n  // keep\r\n  ${v1} /* c */,\r\n  "plugins": ["opencode-wakatime"]\r\n}\r\n`
+      const updated = migrate(text)
+      expect(updated).toContain("// keep")
+      expect(updated).toContain("/* c */")
+    })
+  })
 })
