@@ -29,7 +29,12 @@ export function runOpenCodeBinary(args: string[], stdin?: string): Promise<strin
     const child = execFile("opencode", args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return reject(new OpenCodeNotFoundError())
-        return reject(new Error(`opencode ${args.slice(0, 2).join(" ")} failed: ${stderr.trim() || error.message}`))
+        // Never echo error.message or the full argv: both carry the JSON body, including the API key.
+        const code = (error as NodeJS.ErrnoException).code
+        const detail = stderr.trim() || stdout.trim().slice(-200)
+        return reject(
+          new Error(`opencode ${args[0]} ${args[1]} failed (exit ${code ?? "unknown"})${detail ? `: ${detail}` : ""}`),
+        )
       }
       resolve(stdout)
     })
@@ -78,6 +83,10 @@ const STANDALONE = "--standalone"
  * Talks to OpenCode 2 through its own CLI, so the database layout stays its
  * business. `--standalone` spins up a private server per call instead of
  * depending on a running background service.
+ *
+ * Write order is create-then-remove per integration: if `credential.create`
+ * fails, the previous credential is still in place. Integrations that are only
+ * being cleared are removed directly.
  */
 export function opencodeCredentialStore(
   run: RunOpenCode,
@@ -103,9 +112,11 @@ export function opencodeCredentialStore(
       const touched = new Set([...Object.keys(updates), ...removals])
       if (!touched.size) return
       const existing = await list()
-      for (const entry of existing) {
-        if (!touched.has(entry.integrationID)) continue
-        await run(["api", "credential.remove", STANDALONE, "-d", JSON.stringify({ credentialID: entry.id })])
+      const removeOld = async (providerID: string) => {
+        for (const entry of existing) {
+          if (entry.integrationID !== providerID) continue
+          await run(["api", "credential.remove", STANDALONE, "-d", JSON.stringify({ credentialID: entry.id })])
+        }
       }
       for (const [providerID, credential] of Object.entries(updates)) {
         const body = {
@@ -119,6 +130,11 @@ export function opencodeCredentialStore(
           activate: true,
         }
         await run(["api", "credential.create", STANDALONE, "-d", JSON.stringify(body)])
+        await removeOld(providerID)
+      }
+      for (const providerID of removals) {
+        if (providerID in updates) continue
+        await removeOld(providerID)
       }
     },
   }

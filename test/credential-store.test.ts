@@ -1,8 +1,18 @@
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it, vi } from "vitest"
-import { fileCredentialStore, opencodeCredentialStore, type RunOpenCode } from "../src/credential-store.js"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const execFileMock = vi.hoisted(() => vi.fn())
+vi.mock("node:child_process", () => ({ execFile: execFileMock }))
+
+import {
+  fileCredentialStore,
+  OpenCodeNotFoundError,
+  opencodeCredentialStore,
+  runOpenCodeBinary,
+  type RunOpenCode,
+} from "../src/credential-store.js"
 
 describe("fileCredentialStore", () => {
   it("round-trips through auth.json", async () => {
@@ -42,11 +52,10 @@ describe("opencodeCredentialStore", () => {
     expect(run.calls).toEqual([{ args: ["api", "credential.list", "--standalone"] }])
   })
 
-  it("removes the integration's old credentials before creating the new one, active", async () => {
+  it("creates the new active credential first, then removes the old ones", async () => {
     const run = fakeRun()
     await opencodeCredentialStore(run).write({ work: { key: "sk-new", baseURL: "https://proxy.example/v1" } }, [])
     expect(run.calls.slice(1)).toEqual([
-      { args: ["api", "credential.remove", "--standalone", "-d", JSON.stringify({ credentialID: "cred_1" })] },
       {
         args: [
           "api",
@@ -61,6 +70,7 @@ describe("opencodeCredentialStore", () => {
           }),
         ],
       },
+      { args: ["api", "credential.remove", "--standalone", "-d", JSON.stringify({ credentialID: "cred_1" })] },
     ])
   })
 
@@ -88,5 +98,42 @@ describe("opencodeCredentialStore", () => {
   it("fails loudly on unparseable output", async () => {
     const run: RunOpenCode = async () => "not json"
     await expect(opencodeCredentialStore(run).read()).rejects.toThrow("opencode api credential.list returned invalid JSON")
+  })
+})
+
+describe("runOpenCodeBinary", () => {
+  beforeEach(() => {
+    execFileMock.mockReset()
+  })
+
+  const stubExec = (error: unknown, stdout: string, stderr: string) =>
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      cb(error, stdout, stderr)
+      return { stdin: { end: vi.fn() } }
+    })
+
+  it("maps ENOENT to OpenCodeNotFoundError", async () => {
+    stubExec(Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" }), "", "")
+    await expect(runOpenCodeBinary(["api", "credential.list"])).rejects.toBeInstanceOf(OpenCodeNotFoundError)
+  })
+
+  it("never leaks argv or the API key into the error", async () => {
+    const args = ["api", "credential.create", "--standalone", "-d", JSON.stringify({ value: { key: "sk-secret" } })]
+    stubExec(Object.assign(new Error(`Command failed: opencode ${args.join(" ")}`), { code: 1 }), "", "")
+    const error = await runOpenCodeBinary(args).catch((e: Error) => e)
+    expect((error as Error).message).toBe("opencode api credential.create failed (exit 1)")
+    expect((error as Error).message).not.toContain("sk-secret")
+  })
+
+  it("appends stderr when present", async () => {
+    stubExec(Object.assign(new Error("x"), { code: 2 }), "", " boom \n")
+    await expect(runOpenCodeBinary(["api", "credential.list"])).rejects.toThrow(
+      "opencode api credential.list failed (exit 2): boom",
+    )
+  })
+
+  it("resolves stdout on success", async () => {
+    stubExec(null, "out", "")
+    await expect(runOpenCodeBinary(["api", "credential.list"])).resolves.toBe("out")
   })
 })
