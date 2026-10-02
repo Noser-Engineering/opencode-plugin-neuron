@@ -75,7 +75,7 @@ Mapping `LiteLLMModel → Model.Info`:
 | `id` | `id`, `modelID`, `name` |
 | `supports_function_calling` | `capabilities.tools` (default `true`, as in v1) |
 | `supports_vision` / `supports_pdf_input` | `capabilities.input` adds `image` / `pdf` |
-| `*_cost_per_million` | `cost[0]` (`cache.read` falls back to `input`, `cache.write` to `output`, as v1) |
+| `*_cost_per_million` | `cost[0]` (`cache.read` falls back to `input`, `cache.write` to `input`, as v1) |
 | `max_input_tokens` / `max_tokens` / `max_output_tokens` | `limit.context` / `limit.output` (v1 defaults kept) |
 | deprecated (from `/model/info`) | filtered out, as v1 |
 | `mode === "responses"` | `package: RESPONSES_API_NPM_V2` |
@@ -91,11 +91,11 @@ Fixed: `variants: []`, `time: { released: 0 }`, `status: "active"`, `enabled: tr
 
 ## Setup CLI
 
-- **Version detection**, in order: config already has `plugins` or `providers` → v2; config has `plugin` or `provider` → v1; `opencode --version` on `PATH` parses to major 2 → v2, major 1 → v1; otherwise ask, default v2. `--opencode-version 1|2` flag overrides.
+- **Version detection**, in order: `--opencode-version 1|2` flag; then `opencode --version` on `PATH` parsing to a major (an upgraded user still has a v1-shaped config); then the config shape (`plugins`/`providers` → v2, `plugin`/`provider` → v1); otherwise ask. When binary and config shape disagree, setup prints an `[info]` line and follows the binary.
 - **v2 config entry.** `plugins: [{ package: PACKAGE_NAME, options }]`, unpinned. An existing v1 `plugin` entry for this package (string or tuple, pinned or not) is migrated into `plugins` and removed from `plugin`. Existing `apiKeyEnv` cleanup stays.
 - **v2 extras** written when absent: `share: "disabled"`, `update: "notify"`.
 - **v1 path** unchanged, including pinning.
-- **Credential storage v2.** Spawn `opencode auth import --standalone` with stdin `[{ "integrationID": id, "label": "Neuron (<profile name>)", "value": { "type": "key", "key", "metadata": { "baseURL" } } }]`. Existing credential for that integration → `auth import` skips it; setup then removes it first via `opencode api credential.remove` after listing with `opencode api credential.list`, so a re-run with a new key wins. Binary missing → write `auth.json` as today and print that v2 imports this file only on its first start.
+- **Credential storage v2.** `opencode api credential.list/create/remove --standalone`, body passed via `-d` (the only way in 2.0.22; no stdin). Create-then-remove: the new active credential is created first, then older ones for that integration are removed, so a failed create keeps the old key. Label `Neuron (<profile name>)`. `read()` prefers the active credential. Binary cannot be run (not found, or a spawn error such as `EINVAL` for the Windows npm shim) → write `auth.json` as before and print a warning that v2 imports this file only on its first start.
 - Key verification against `/v1/models` unchanged.
 
 ## Tests

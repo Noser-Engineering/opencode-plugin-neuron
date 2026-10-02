@@ -155,8 +155,8 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
     await ctx.agent.transform((editor) => applyPermissionRules(editor, rules)),
   ]
   dependencies.log(
-    "info",
-    "OpenCode 2 plugins cannot set share or update; the setup command writes share: disabled and update: notify into opencode.json",
+    "warn",
+    "OpenCode 2 plugins cannot set share or update; the setup command writes share: disabled and update: notify into opencode.json; see README, section OpenCode 2.x",
   )
   return registrations
 }

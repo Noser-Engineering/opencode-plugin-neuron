@@ -189,12 +189,23 @@ export interface VersionProbe {
   ask: () => Promise<OpenCodeMajor>
 }
 
-/** Flag, then the config file's own shape, then `opencode --version`, then the user. */
+/**
+ * Flag, then `opencode --version`, then the config file's own shape, then the
+ * user. The binary outranks the config shape because a user who upgraded to
+ * OpenCode 2 still has a v1-shaped config until setup rewrites it.
+ */
 export async function resolveOpenCodeVersion(args: CliArgs, probe: VersionProbe): Promise<OpenCodeMajor> {
   if (args.opencodeVersion) return args.opencodeVersion
-  if (probe.configVersion) return probe.configVersion
   const fromBinary = parseOpenCodeVersion((await probe.binaryOutput()) ?? "")
-  if (fromBinary) return fromBinary
+  if (fromBinary) {
+    if (probe.configVersion && probe.configVersion !== fromBinary) {
+      process.stdout.write(
+        `[info] opencode --version reports ${fromBinary}.x; the config looks like OpenCode ${probe.configVersion}; writing the ${fromBinary}.x shape\n`,
+      )
+    }
+    return fromBinary
+  }
+  if (probe.configVersion) return probe.configVersion
   return probe.ask()
 }
 
@@ -210,16 +221,17 @@ export async function chooseCredentialStore(
   version: OpenCodeMajor,
   authPath: string,
   run: RunOpenCode = runOpenCodeBinary,
+  labelFor?: (providerID: string) => string,
 ): Promise<CredentialStore> {
   if (version === 1) return fileCredentialStore(authPath)
-  const store = opencodeCredentialStore(run)
+  const store = opencodeCredentialStore(run, labelFor)
   try {
     await store.read()
     return store
   } catch (error) {
     if (!(error instanceof OpenCodeNotFoundError)) throw error
     process.stdout.write(
-      "[warn] opencode is not on PATH; writing the key to auth.json instead. OpenCode 2 imports auth.json only on its first start, so run `opencode auth login` if the key does not show up.\n",
+      `[warn] ${error.message}; writing the key to auth.json instead. OpenCode 2 imports auth.json only on its first start, so run \`opencode auth login\` if the key does not show up.\n`,
     )
     return fileCredentialStore(authPath)
   }
@@ -238,11 +250,18 @@ async function loadState(scope: ConfigScope, args: CliArgs, prompts?: PromptPort
       return (await prompts.select("Which OpenCode version is installed?", ["OpenCode 2.x", "OpenCode 1.x"])) === 0 ? 2 : 1
     },
   })
-  const credentials = await chooseCredentialStore(version, resolveAuthPath())
+  const profiles = [...(readNeuronConfigEntry(config)?.profiles ?? [])]
+  // Profiles added during this run are not in the list yet; they fall back to the id.
+  const credentials = await chooseCredentialStore(
+    version,
+    resolveAuthPath(),
+    runOpenCodeBinary,
+    (id) => `Neuron (${profiles.find((profile) => profile.id === id)?.name ?? id})`,
+  )
   return {
     configPath,
     configText,
-    profiles: [...(readNeuronConfigEntry(config)?.profiles ?? [])],
+    profiles,
     version,
     credentials,
     storedCredentials: await credentials.read(),

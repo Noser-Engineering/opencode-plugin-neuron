@@ -18,8 +18,12 @@ export interface CredentialStore {
 export type RunOpenCode = (args: string[], stdin?: string) => Promise<string>
 
 export class OpenCodeNotFoundError extends Error {
-  constructor() {
-    super("The opencode binary was not found on PATH")
+  constructor(code?: string) {
+    super(
+      code && code !== "ENOENT"
+        ? `The opencode binary could not be run (${code})`
+        : "The opencode binary was not found on PATH",
+    )
     this.name = "OpenCodeNotFoundError"
   }
 }
@@ -28,9 +32,11 @@ export function runOpenCodeBinary(args: string[], stdin?: string): Promise<strin
   return new Promise((resolve, reject) => {
     const child = execFile("opencode", args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return reject(new OpenCodeNotFoundError())
-        // Never echo error.message or the full argv: both carry the JSON body, including the API key.
         const code = (error as NodeJS.ErrnoException).code
+        // A string code is a spawn-level failure (ENOENT, EINVAL for the Windows npm shim, EACCES);
+        // a numeric code is the process exit status.
+        if (typeof code === "string") return reject(new OpenCodeNotFoundError(code))
+        // Never echo error.message or the full argv: both carry the JSON body, including the API key.
         const detail = stderr.trim() || stdout.trim().slice(-200)
         return reject(
           new Error(`opencode ${args[0]} ${args[1]} failed (exit ${code ?? "unknown"})${detail ? `: ${detail}` : ""}`),
@@ -54,6 +60,7 @@ export function fileCredentialStore(authPath: string): CredentialStore {
 interface CredentialEntry {
   id: string
   integrationID: string
+  active?: boolean
   value: { type: string; key?: string; metadata?: Record<string, unknown> }
 }
 
@@ -99,7 +106,8 @@ export function opencodeCredentialStore(
       const credentials: Record<string, StoredApiCredential> = {}
       for (const entry of await list()) {
         if (entry.value.type !== "key" || typeof entry.value.key !== "string" || !entry.value.key) continue
-        if (credentials[entry.integrationID]) continue
+        // The active credential wins; otherwise the first key credential stays.
+        if (credentials[entry.integrationID] && entry.active !== true) continue
         const baseURL = entry.value.metadata?.baseURL
         credentials[entry.integrationID] = {
           key: entry.value.key,

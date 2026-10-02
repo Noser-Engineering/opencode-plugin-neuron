@@ -60,17 +60,17 @@ The setup asks for:
 - An API key
 - Any additional profiles to configure
 
-API keys entered directly are stored in OpenCode's standard credential file; they are never written to `opencode.json`. On macOS and Linux the file is created with mode `0600`. Windows ignores POSIX modes, so there the file inherits the ACL of its parent directory. The setup also verifies the key by listing its available models.
+On OpenCode 1.x, API keys entered directly are stored in OpenCode's standard credential file; they are never written to `opencode.json`. On macOS and Linux the file is created with mode `0600`. Windows ignores POSIX modes, so there the file inherits the ACL of its parent directory. The setup also verifies the key by listing its available models.
 
 Quit and restart OpenCode after setup, then run `/models`.
 
 ## OpenCode 2.x
 
-The package ships two entrypoints. OpenCode 1.x loads `.` (the `plugin` config key, pinned version). OpenCode 2.x loads `./server` (the `plugins` config key, unpinned; `opencode plugin update` picks up new versions). The setup command detects the installed major from the config file, then from `opencode --version`, and asks if neither tells; `--opencode-version <1|2>` overrides. `opencode plugin list` reads only the global config, so a project-level `plugins` entry does not show up there.
+The package ships two entrypoints. OpenCode 1.x loads `.` (the `plugin` config key, pinned version). OpenCode 2.x loads `./server` (the `plugins` config key, unpinned; `opencode plugin update` picks up new versions). The setup command detects the installed major from `opencode --version`, then from the config file, and asks if neither tells; `--opencode-version <1|2>` overrides. `opencode plugin list` reads only the global config, so a project-level `plugins` entry does not show up there.
 
 What changes on OpenCode 2:
 
-- API keys live in OpenCode's credential store, not in `auth.json`. Setup writes them through the `opencode` CLI, so it has to be on `PATH`; otherwise setup falls back to `auth.json` with a warning, which OpenCode 2 imports only on its very first start. `opencode api credential.list` shows the stored credential. You can also connect a profile from inside OpenCode with `/connect`, where the profile is offered; the plugin picks the key up without a restart.
+- API keys live in OpenCode's credential store, not in `auth.json`. Setup writes them through the `opencode` CLI, so it has to be on `PATH`; otherwise setup falls back to `auth.json` with a warning, which OpenCode 2 imports only on its very first start. On Windows the npm shim (`opencode.cmd`) cannot be launched this way, so npm-installed OpenCode falls back to `auth.json`; the Scoop/standalone `opencode.exe` works. `opencode api` takes the body only through `-d` (no stdin in 2.0.22), so the key is briefly visible in the process list while setup stores it. `opencode api credential.list` shows the stored credential. You can also connect a profile from inside OpenCode with `/connect`, where the profile is offered; the plugin picks the key up without a restart.
 - A key stored for a profile whose URL changed is ignored, with a warning in the log, exactly as before.
 - The compliance layer removes OpenCode Zen (`opencode`, `opencode-go`) and any `denyProviders` entry unless the provider is declared under `providers` in `opencode.json`, and appends the permission baseline to every agent (`bash` is `shell` in v2). OpenCode 2 merges built-in defaults and your own `permissions` into one list, so the baseline also overrides a conflicting rule of yours for the same resource; set `enforce: false` if a project needs that.
 - A v2 plugin cannot set `share` or `update`. Setup writes `"share": "disabled"` and `"update": "notify"` into the config it edits, only when they are absent. Removing them is your call, and the plugin will not put them back.
@@ -177,7 +177,7 @@ Alongside that, the plugin sets:
 | Setting | Value | Why |
 | --- | --- | --- |
 | `share` | `"disabled"` | `/share` publishes the conversation including code excerpts to opencode.ai, where a CDN caches it |
-| `autoupdate` | `"notify"` | an unattended update can introduce a new preconfigured provider. An existing `false` is stricter and is left alone |
+| `autoupdate` (OpenCode 1.x; `update` on 2.x, written by setup) | `"notify"` | an unattended update can introduce a new preconfigured provider. An existing `false` is stricter and is left alone |
 | `disabled_providers` | the block list | entries already present are kept |
 | `permission` | a baseline policy | see below |
 

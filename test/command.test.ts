@@ -228,13 +228,42 @@ describe("resolveOpenCodeVersion", () => {
     expect(binary).not.toHaveBeenCalled()
   })
 
-  it("then the config shape", async () => {
-    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 1, binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(1)
+  it("then the binary, even when the config still has the v1 shape", async () => {
+    const writes: string[] = []
+    const original = process.stdout.write.bind(process.stdout)
+    process.stdout.write = ((chunk: string) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    try {
+      expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 1, binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(2)
+    } finally {
+      process.stdout.write = original
+    }
+    expect(writes.join("")).toContain(
+      "[info] opencode --version reports 2.x; the config looks like OpenCode 1; writing the 2.x shape",
+    )
   })
 
-  it("then the binary", async () => {
-    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(2)
-    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => "1.18.30", ask: noAsk })).toBe(1)
+  it("does not print the mismatch note when binary and config agree", async () => {
+    const writes: string[] = []
+    const original = process.stdout.write.bind(process.stdout)
+    process.stdout.write = ((chunk: string) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    try {
+      expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 2, binaryOutput: async () => "opencode v2.0.22", ask: noAsk })).toBe(2)
+      expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { binaryOutput: async () => "1.18.30", ask: noAsk })).toBe(1)
+    } finally {
+      process.stdout.write = original
+    }
+    expect(writes.join("")).toBe("")
+  })
+
+  it("uses the config shape when the binary gives nothing", async () => {
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 1, binaryOutput: async () => undefined, ask: noAsk })).toBe(1)
+    expect(await resolveOpenCodeVersion({ help: false, keyStdin: false }, { configVersion: 1, binaryOutput: async () => "garbage", ask: noAsk })).toBe(1)
   })
 
   it("asks when nothing else knows", async () => {
@@ -276,5 +305,35 @@ describe("chooseCredentialStore", () => {
       process.stdout.write = original
     }
     expect(writes.join("")).toContain("imports auth.json only on its first start")
+  })
+
+  it("names the spawn error code in the warning for non-ENOENT failures", async () => {
+    const run = vi.fn(async () => {
+      throw new OpenCodeNotFoundError("EINVAL")
+    })
+    const writes: string[] = []
+    const original = process.stdout.write.bind(process.stdout)
+    process.stdout.write = ((chunk: string) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    try {
+      await chooseCredentialStore(2, "/tmp/auth.json", run)
+    } finally {
+      process.stdout.write = original
+    }
+    expect(writes.join("")).toContain("could not be run (EINVAL)")
+  })
+
+  it("labels credentials through the label callback", async () => {
+    const calls: string[][] = []
+    const run = vi.fn(async (args: string[]) => {
+      calls.push(args)
+      return JSON.stringify({ data: [] })
+    })
+    const store = await chooseCredentialStore(2, "/tmp/auth.json", run, () => "Neuron (Work)")
+    await store.write({ work: { key: "sk-1" } }, [])
+    const create = calls.find((c) => c[1] === "credential.create")!
+    expect(JSON.parse(create[4]!).label).toBe("Neuron (Work)")
   })
 })

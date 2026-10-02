@@ -52,6 +52,15 @@ describe("opencodeCredentialStore", () => {
     expect(run.calls).toEqual([{ args: ["api", "credential.list", "--standalone"] }])
   })
 
+  it("prefers the active credential over an inactive leftover", async () => {
+    const listing = [
+      { id: "cred_a", integrationID: "work", active: false, value: { type: "key", key: "sk-old" } },
+      { id: "cred_b", integrationID: "work", active: true, value: { type: "key", key: "sk-new" } },
+    ]
+    const run: RunOpenCode = async () => JSON.stringify({ data: listing })
+    expect(await opencodeCredentialStore(run).read()).toEqual({ work: { key: "sk-new" } })
+  })
+
   it("creates the new active credential first, then removes the old ones", async () => {
     const run = fakeRun()
     await opencodeCredentialStore(run).write({ work: { key: "sk-new", baseURL: "https://proxy.example/v1" } }, [])
@@ -115,6 +124,13 @@ describe("runOpenCodeBinary", () => {
   it("maps ENOENT to OpenCodeNotFoundError", async () => {
     stubExec(Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" }), "", "")
     await expect(runOpenCodeBinary(["api", "credential.list"])).rejects.toBeInstanceOf(OpenCodeNotFoundError)
+  })
+
+  it("maps spawn-level errors such as EINVAL to OpenCodeNotFoundError", async () => {
+    stubExec(Object.assign(new Error("spawn EINVAL"), { code: "EINVAL" }), "", "")
+    const error = await runOpenCodeBinary(["api", "credential.list"]).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(OpenCodeNotFoundError)
+    expect((error as Error).message).toBe("The opencode binary could not be run (EINVAL)")
   })
 
   it("never leaks argv or the API key into the error", async () => {
