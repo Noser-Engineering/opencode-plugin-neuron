@@ -161,7 +161,7 @@ OpenCode's built-in `opencode` provider (Zen, its hosted gateway) is selectable 
 
 Everything else stays available. A Claude, Codex or GitHub Copilot licence you bring along works as it does in plain OpenCode; the plugin does not touch it. Up to 0.3.12 the plugin blocked every mainstream vendor, hyperscaler and gateway unless it was declared in `opencode.json`; that turned out to get in the way of exactly those licences, so the list is now a short denylist instead.
 
-**Declaring a provider is how you approve it.** OpenCode fills `config.provider` from configuration files only, never from an autoloaded credential, so a blocked provider that is named in `opencode.json` is unblocked again:
+**Declaring a provider is how you approve it.** OpenCode 1 fills `config.provider` from configuration files only, never from an autoloaded credential. On OpenCode 2 the plugin reads the same files itself (global and project `opencode.json(c)`, plus `OPENCODE_CONFIG`), because the v2 plugin API exposes neither the config nor a reliable "declared" marker: Zen arrives as `"enabled"` even when nobody asked for it. Either way, a blocked provider that is named in `opencode.json` is unblocked again:
 
 ```jsonc
 // OpenCode 1.x

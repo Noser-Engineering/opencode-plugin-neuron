@@ -94,6 +94,8 @@ export interface OtherCredential {
 
 export interface NeuronContext {
   readonly options: Readonly<Record<string, unknown>>
+  /** Where this plugin instance runs; the project config lives here. */
+  readonly location: { readonly directory: string }
   readonly provider: { readonly transform: Transform<ProviderEditor> }
   readonly agent: { readonly transform: Transform<AgentEditor> }
   readonly integration: {

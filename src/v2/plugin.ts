@@ -17,6 +17,8 @@ export interface V2Dependencies {
     options: { timeoutMs: number },
   ) => Promise<LiteLLMModel[]>
   fetchModelInfo: (baseURL: string, apiKey: string | undefined, options: { timeoutMs: number }) => Promise<ModelInfo>
+  /** Provider ids declared in the config files OpenCode reads for `directory`. */
+  readDeclaredProviders: (directory: string) => Promise<ReadonlySet<string>>
   log: (level: V2LogLevel, message: string, extra?: Record<string, unknown>) => void
   cache?: DiscoveryCache
 }
@@ -149,9 +151,21 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
     return []
   }
   const policy = { enforce: true, denyProviders: options.denyProviders }
+  const ownProfiles = new Set(options.profiles.map((profile) => profile.id))
+  // Read before the transform so the callback stays pure. An unreadable
+  // config counts as "nothing declared": the layer errs on the side of blocking.
+  let declared: ReadonlySet<string> = new Set()
+  try {
+    declared = await dependencies.readDeclaredProviders(ctx.location.directory)
+  } catch (error) {
+    dependencies.log("warn", "Could not read the declared providers from the OpenCode config; blocking the full list", {
+      directory: ctx.location.directory,
+      error: describe(error),
+    })
+  }
   const rules = toPermissionRules(DEFAULT_PERMISSION_POLICY)
   const registrations = [
-    await ctx.provider.transform((editor) => applyDenyList(editor, policy)),
+    await ctx.provider.transform((editor) => applyDenyList(editor, policy, declared, ownProfiles)),
     await ctx.agent.transform((editor) => applyPermissionRules(editor, rules)),
   ]
   dependencies.log(

@@ -32,3 +32,18 @@ jobs:
       - name: Install OpenCode
         run: npm install --global opencode-ai
       - run: ./scripts/verify-protection.sh
+
+  # Same proof for the OpenCode 2 entrypoint, against the current 2.x.
+  verify-protection-v2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install OpenCode 2
+        run: npm install --global @opencode/cli
+      - run: ./scripts/verify-protection-v2.sh

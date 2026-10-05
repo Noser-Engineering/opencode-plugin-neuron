@@ -27,28 +27,37 @@ class FakeProviderEditor implements ProviderEditor {
 const enforce = { enforce: true, denyProviders: [] }
 
 describe("deniedProviderIDs", () => {
-  it("denies the blocked providers while they are only auto-loaded", () => {
-    const records = [record("opencode", "auto"), record("opencode-go", "auto"), record("anthropic", "auto")]
-    expect(deniedProviderIDs(records, enforce)).toEqual(["opencode", "opencode-go"])
+  const none = new Set<string>()
+
+  it("denies the blocked providers whatever their activation says", () => {
+    // OpenCode 2 ships Zen as "enabled" even when nobody declared it, so
+    // activation cannot stand in for a declaration.
+    const records = [record("opencode", "enabled"), record("opencode-go", "auto"), record("anthropic", "auto")]
+    expect(deniedProviderIDs(records, enforce, none)).toEqual(["opencode", "opencode-go"])
   })
 
-  it("keeps a blocked provider the user declared", () => {
+  it("keeps a blocked provider the user declared in a config file", () => {
     const records = [record("opencode", "enabled"), record("opencode-go", "auto")]
-    expect(deniedProviderIDs(records, enforce)).toEqual(["opencode-go"])
+    expect(deniedProviderIDs(records, enforce, new Set(["opencode"]))).toEqual(["opencode-go"])
   })
 
   it("adds denyProviders and ignores ids that are not loaded at all", () => {
     const records = [record("anthropic", "auto")]
-    expect(deniedProviderIDs(records, { enforce: true, denyProviders: ["anthropic", "missing"] })).toEqual([
+    expect(deniedProviderIDs(records, { enforce: true, denyProviders: ["anthropic", "missing"] }, none)).toEqual([
       "anthropic",
     ])
+  })
+
+  it("never denies the plugin's own profiles", () => {
+    const records = [record("work", "enabled")]
+    expect(deniedProviderIDs(records, { enforce: true, denyProviders: ["work"] }, none, new Set(["work"]))).toEqual([])
   })
 })
 
 describe("applyDenyList", () => {
   it("removes exactly the denied providers", () => {
-    const editor = new FakeProviderEditor([record("opencode", "auto"), record("work", "enabled")])
-    applyDenyList(editor, enforce)
+    const editor = new FakeProviderEditor([record("opencode", "enabled"), record("work", "enabled")])
+    applyDenyList(editor, enforce, new Set<string>())
     expect(editor.removed).toEqual(["opencode"])
   })
 })

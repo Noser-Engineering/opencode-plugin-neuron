@@ -24,6 +24,7 @@ type Credentials = Record<string, KeyCredential>
  */
 class FakeContext implements NeuronContext {
   readonly options: Record<string, unknown>
+  readonly location = { directory: "/fake/project" }
   private readonly providerCallbacks: Array<{ run: (e: ProviderEditor) => void; disposed: boolean }> = []
   private readonly agentCallbacks: Array<(e: AgentEditor) => void> = []
   private readonly integrationCallbacks: Array<(e: IntegrationEditor) => void> = []
@@ -151,6 +152,7 @@ function deps(overrides: Partial<V2Dependencies> = {}): V2Dependencies & { log: 
   return {
     discoverRawModels: async () => [{ id: "model-a" }],
     fetchModelInfo: noInfo,
+    readDeclaredProviders: async () => new Set<string>(),
     log: vi.fn(),
     ...overrides,
   } as V2Dependencies & { log: ReturnType<typeof vi.fn> }
@@ -226,17 +228,34 @@ describe("setupNeuron", () => {
     expect(d.log).toHaveBeenCalledWith("warn", expect.stringContaining("Model discovery failed"), expect.anything())
   })
 
-  it("removes blocked providers unless declared and appends the permission baseline", async () => {
-    const ctx = new FakeContext({ profiles: [PROFILE] }, {}, [catalog("opencode", "auto"), catalog("opencode-go", "enabled"), catalog("anthropic", "auto")])
+  it("removes blocked providers unless declared in a config file and appends the permission baseline", async () => {
+    const ctx = new FakeContext({ profiles: [PROFILE] }, {}, [catalog("opencode", "enabled"), catalog("opencode-go", "enabled"), catalog("anthropic", "auto")])
+    const readDeclaredProviders = vi.fn(async (directory: string) => (directory === "/fake/project" ? new Set(["opencode-go"]) : new Set<string>()))
 
-    await setupNeuron(ctx, deps())
+    await setupNeuron(ctx, deps({ readDeclaredProviders }))
     const { providers, agents } = ctx.rebuild()
+
+    expect(readDeclaredProviders).toHaveBeenCalledWith("/fake/project")
 
     expect([...providers.keys()].sort()).toEqual(["anthropic", "opencode-go", "work"])
     const build = agents.find((a) => a.id === "build")!
     expect(build.permissions[0]).toEqual({ action: "*", resource: "*", effect: "allow" })
     expect(build.permissions).toContainEqual({ action: "read", resource: "*.env", effect: "deny" })
     expect(build.permissions).toContainEqual({ action: "shell", resource: "git push*", effect: "ask" })
+  })
+
+  it("still removes Zen when the config files cannot be read", async () => {
+    const ctx = new FakeContext({ profiles: [PROFILE] }, {}, [catalog("opencode", "enabled")])
+    const d = deps({
+      readDeclaredProviders: async () => {
+        throw new Error("EACCES")
+      },
+    })
+
+    await setupNeuron(ctx, d)
+
+    expect(ctx.rebuild().providers.has("opencode")).toBe(false)
+    expect(d.log).toHaveBeenCalledWith("warn", expect.stringContaining("declared providers"), expect.anything())
   })
 
   it("skips the compliance layer and warns when enforce is false", async () => {

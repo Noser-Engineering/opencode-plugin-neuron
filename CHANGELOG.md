@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (0.5.1)
+
+### Fixed: OpenCode Zen was not blocked on OpenCode 2
+
+On OpenCode 2 the v2 compliance layer treated a provider's `activation: "enabled"` as proof that the user had declared it. Zen (`opencode`) ships as `"enabled"` out of the box, because its public key always works, so it survived the deny list on every default install; only `opencode-go` and `denyProviders` entries were removed. The plugin now reads the config files OpenCode itself reads (`OPENCODE_CONFIG`, global and project `opencode.json(c)`) and treats only a provider listed under `providers` or legacy `provider` there as declared. Found by the new `scripts/verify-protection-v2.sh`, which CI runs against the current OpenCode 2.x alongside the existing 1.x check; that 1.x check was also repaired (it still encoded the pre-0.4.0 denylist and loaded the registry package instead of the local build).
+
 ## 0.5.0
 
 - OpenCode 2.x support through a second entrypoint (`exports["./server"]`). OpenCode 1.x keeps loading the unchanged v1 entry. OpenCode 2 users get it only once a version containing `./server` is published; npm 0.4.1 has none.

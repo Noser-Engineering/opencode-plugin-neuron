@@ -3,25 +3,32 @@ import type { PermissionCategory, PermissionConfig, PermissionRule as V1Rule } f
 import type { AgentEditor, PermissionRule, ProviderEditor, ProviderRecord } from "./context.js"
 
 /**
- * The providers to remove: the block list plus denyProviders, minus anything
- * the user declared. In OpenCode 2 a provider named in opencode.json arrives
- * with activation set to enabled, an auto-loaded one with auto - that is the
- * same declaration is approval signal config.provider gave in v1. The
- * plugin's own profiles are added as enabled, so they are never denied.
- * Ids that are not loaded at all are skipped; removing them would be a no-op.
+ * The providers to remove: the block list plus denyProviders, minus what the
+ * user declared in a config file (see `readDeclaredProviderIDs`) and minus
+ * the plugin's own profiles. A provider's `activation` is deliberately not
+ * consulted: OpenCode 2 marks Zen `"enabled"` out of the box because its
+ * public key always works, so it cannot stand in for a declaration. Ids
+ * that are not loaded at all are skipped; removing them would be a no-op.
  */
-export function deniedProviderIDs(records: readonly ProviderRecord[], policy: CompliancePolicy): string[] {
-  const byId = new Map(records.map((record) => [record.provider.id, record]))
+export function deniedProviderIDs(
+  records: readonly ProviderRecord[],
+  policy: CompliancePolicy,
+  declared: ReadonlySet<string>,
+  ownProfiles: ReadonlySet<string> = new Set(),
+): string[] {
+  const loaded = new Set(records.map((record) => record.provider.id))
   const denyable = [...new Set([...BLOCKED_PROVIDERS, ...policy.denyProviders])]
-  return denyable.filter((id) => {
-    const record = byId.get(id)
-    return record !== undefined && record.provider.activation !== "enabled"
-  })
+  return denyable.filter((id) => loaded.has(id) && !declared.has(id) && !ownProfiles.has(id))
 }
 
 /** Transform callback body. Pure: OpenCode replays it on every registry rebuild. */
-export function applyDenyList(editor: ProviderEditor, policy: CompliancePolicy): void {
-  for (const id of deniedProviderIDs(editor.list(), policy)) editor.remove(id)
+export function applyDenyList(
+  editor: ProviderEditor,
+  policy: CompliancePolicy,
+  declared: ReadonlySet<string>,
+  ownProfiles: ReadonlySet<string> = new Set(),
+): void {
+  for (const id of deniedProviderIDs(editor.list(), policy, declared, ownProfiles)) editor.remove(id)
 }
 
 /** v1 permission actions that were renamed in v2. */
