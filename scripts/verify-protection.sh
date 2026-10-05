@@ -71,18 +71,23 @@ run_debug_config() {
 make_case() {
   local name="$1" config="$2"
   local dir="$WORKSPACE/$name"
-  mkdir -p "$dir/xdg-config/opencode" "$dir/xdg-data" "$dir/.opencode/plugin"
+  mkdir -p "$dir/xdg-config/opencode" "$dir/xdg-data"
   echo '{"$schema":"https://opencode.ai/config.json"}' >"$dir/xdg-config/opencode/opencode.json"
   printf '%s\n' "$config" >"$dir/opencode.json"
-  cat >"$dir/.opencode/plugin/neuron.js" <<EOF
-export { NeuronPlugin } from "file://$REPO_ROOT/dist/index.js"
-EOF
   echo "$dir"
 }
 
+# The plugin entry points straight at the local build. A package name here
+# would make OpenCode install that package from the registry and hand the
+# options to it, not to the code under test.
+readonly PLUGIN_SPEC="file://$REPO_ROOT/dist/index.js"
+
+# Argument 1: plugin options as JSON. Argument 2 (optional): extra top-level
+# config members, without the surrounding braces.
 plugin_entry() {
-  local options="${1:-{\}}"
-  printf '{"$schema":"https://opencode.ai/config.json","plugin":[["opencode-plugin-neuron",%s]]}' "$options"
+  local options="${1:-{\}}" extra="${2:-}"
+  printf '{"$schema":"https://opencode.ai/config.json","plugin":[["%s",%s]]%s}' \
+    "$PLUGIN_SPEC" "$options" "${extra:+,$extra}"
 }
 
 # ---------------------------------------------------------------------------
@@ -92,7 +97,6 @@ plugin_entry() {
 # ---------------------------------------------------------------------------
 echo "case: baseline without the plugin"
 baseline_dir="$(make_case baseline '{"$schema":"https://opencode.ai/config.json"}')"
-rm -rf "$baseline_dir/.opencode"
 baseline_output="$(run_models "$baseline_dir")"
 if grep -q '^anthropic/' <<<"$baseline_output"; then
   pass "a leftover ANTHROPIC_API_KEY does load the anthropic provider"
@@ -103,39 +107,57 @@ fi
 
 # ---------------------------------------------------------------------------
 # 2. The vector the layer exists for: the plugin is loaded, nothing is
-#    declared, the credential is still in the environment.
+#    declared. Since 0.4.0 only OpenCode Zen is blocked out of the box; a
+#    stray vendor credential stays usable, exactly as in plain OpenCode.
 # ---------------------------------------------------------------------------
 echo "case: plugin loaded, nothing declared"
 protected_dir="$(make_case protected "$(plugin_entry)")"
 protected_output="$(run_models "$protected_dir")"
-if grep -q '^anthropic/' <<<"$protected_output"; then
-  fail "anthropic is still available with the plugin loaded"
-  grep '^anthropic/' <<<"$protected_output" | head -3 >&2
-else
-  pass "anthropic is blocked"
-fi
 if grep -q '^opencode/' <<<"$protected_output"; then
   fail "the built-in opencode provider (Zen) is still available"
 else
   pass "the built-in opencode provider (Zen) is blocked"
 fi
-
-# ---------------------------------------------------------------------------
-# 3. Declaration is approval. A provider written into opencode.json on purpose
-#    has to keep working, or the layer is a blunt instrument.
-# ---------------------------------------------------------------------------
-echo "case: anthropic declared on purpose"
-declared_config='{"$schema":"https://opencode.ai/config.json","plugin":[["opencode-plugin-neuron",{}]],"provider":{"anthropic":{}}}'
-declared_dir="$(make_case declared "$declared_config")"
-declared_output="$(run_models "$declared_dir")"
-if grep -q '^anthropic/' <<<"$declared_output"; then
-  pass "a declared anthropic provider still works"
+if grep -q '^opencode-go/' <<<"$protected_output"; then
+  fail "the opencode-go provider is still available"
 else
-  fail "a declared anthropic provider was blocked"
+  pass "the opencode-go provider is blocked"
+fi
+if grep -q '^anthropic/' <<<"$protected_output"; then
+  pass "a stray vendor credential is left alone"
+else
+  fail "anthropic was blocked although it is not on the deny list"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. The resolved config carries the settings the layer promises.
+# 3. Declaration is approval. A blocked provider written into opencode.json
+#    on purpose has to work again, or the layer is a blunt instrument.
+# ---------------------------------------------------------------------------
+echo "case: opencode (Zen) declared on purpose"
+declared_dir="$(make_case declared "$(plugin_entry '{}' '"provider":{"opencode":{}}')")"
+declared_output="$(run_models "$declared_dir")"
+if grep -q '^opencode/' <<<"$declared_output"; then
+  pass "a declared opencode provider works again"
+else
+  fail "a declared opencode provider was still blocked"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. denyProviders extends the block list. The stray anthropic credential
+#    from the baseline is the provider to rule out here.
+# ---------------------------------------------------------------------------
+echo "case: anthropic on denyProviders"
+denied_dir="$(make_case denied "$(plugin_entry '{"denyProviders":["anthropic"]}')")"
+denied_output="$(run_models "$denied_dir")"
+if grep -q '^anthropic/' <<<"$denied_output"; then
+  fail "anthropic is still available although it is on denyProviders"
+  grep '^anthropic/' <<<"$denied_output" | head -3 >&2
+else
+  pass "a provider on denyProviders is blocked"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. The resolved config carries the settings the layer promises.
 # ---------------------------------------------------------------------------
 echo "case: resolved config"
 resolved="$(run_debug_config "$protected_dir")"
@@ -147,8 +169,11 @@ node -e '
     problems.push(`autoupdate is ${JSON.stringify(config.autoupdate)}, expected "notify" or false`)
   }
   const disabled = config.disabled_providers ?? []
-  for (const id of ["anthropic", "opencode", "github-copilot"]) {
+  for (const id of ["opencode", "opencode-go"]) {
     if (!disabled.includes(id)) problems.push(`disabled_providers is missing ${id}`)
+  }
+  for (const id of ["anthropic", "github-copilot"]) {
+    if (disabled.includes(id)) problems.push(`disabled_providers wrongly contains ${id}`)
   }
   for (const problem of problems) console.log(`FAIL ${problem}`)
   if (!problems.length) console.log("OK resolved config carries share, autoupdate and disabled_providers")
