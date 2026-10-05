@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.5.1)
+## 0.5.1
 
 ### Fixed: OpenCode Zen was not blocked on OpenCode 2
 
