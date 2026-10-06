@@ -72,7 +72,7 @@ What changes on OpenCode 2:
 
 - API keys live in OpenCode's credential store, not in `auth.json`. Setup writes them through the `opencode` CLI, so it has to be on `PATH`; otherwise setup falls back to `auth.json` with a warning, which OpenCode 2 imports only on its very first start. On Windows the npm shim (`opencode.cmd`) cannot be launched this way, so npm-installed OpenCode falls back to `auth.json`; the Scoop/standalone `opencode.exe` works. `opencode api` takes the body only through `-d` (no stdin in 2.0.22), so the key is briefly visible in the process list while setup stores it. `opencode api credential.list` shows the stored credential. You can also connect a profile from inside OpenCode with `/connect`, where the profile is offered; the plugin picks the key up without a restart.
 - A key stored for a profile whose URL changed is ignored, with a warning in the log, exactly as before.
-- The compliance layer removes OpenCode Zen (`opencode`, `opencode-go`) and any `denyProviders` entry unless the provider is declared under `providers` in `opencode.json`, and appends the permission baseline to every agent (`bash` is `shell` in v2). OpenCode 2 merges built-in defaults and your own `permissions` into one list, so the baseline also overrides a conflicting rule of yours for the same resource; set `enforce: false` if a project needs that.
+- The compliance layer removes OpenCode Zen (`opencode`, `opencode-go`) and any `denyProviders` entry unless the provider is declared under `providers` in `opencode.json`, and appends the permission baseline to every agent (`bash` is `shell` in v2). A deny of the baseline overrides a conflicting rule of yours for the same resource; an ask or allow yields to it. See [Permission baseline](#permission-baseline).
 - A v2 plugin cannot set `share` or `update`. Setup writes `"share": "disabled"` and `"update": "notify"` into the config it edits, only when they are absent. Removing them is your call, and the plugin will not put them back.
 
 ## Skipping prompts
@@ -183,9 +183,18 @@ Alongside that, the plugin sets:
 
 ### Permission baseline
 
-The plugin also fills in a baseline `permission` policy: deny reading or editing secrets (`.env`, `.npmrc`, `.pypirc`, SSH keys), allow read-only shell commands (`git status`, `git diff`, `git log`, `ls`, `grep`, test runners, …) without asking, and require confirmation for anything else, including `rm`, `git push`, `git checkout`, `curl`, and `wget`. The exact patterns live in `DEFAULT_PERMISSION_POLICY` in `src/compliance.ts`.
+The plugin also adds a baseline `permission` policy. Everyday work runs without a prompt; secrets are off limits; a prompt appears only when data leaves the machine or something cannot be undone. The exact patterns live in `DEFAULT_PERMISSION_POLICY` in `src/compliance.ts`.
 
-Like the block list, this is additive: it only fills in a pattern that is not already present. A rule you set yourself, for the same pattern or as a blanket string for a whole category (e.g. `"edit": "allow"`), is never overwritten or expanded. Governed by the same `enforce` flag as the rest of the compliance layer.
+| Action | Default | Rules |
+| --- | --- | --- |
+| read | allow | deny secrets: `.env`, `.env.*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials(.json)`, `.aws/`, `.ssh/`, `.kube/config`, `.docker/config.json`, SSH keys, `*.pem`, `*.key`, `*.p12`, `*.pfx`; `.env.example` and `.env.sample` stay readable |
+| edit | allow | deny the same secret files |
+| bash (`shell` on OpenCode 2) | allow | ask for egress (`curl`, `wget`, `ssh`, `scp`, `sftp`, `rsync`, `nc`), cloud CLIs (`az`, `aws`, `gcloud`, `kubectl`, `docker push`/`login`), publishing (`npm`/`pnpm publish`, `twine`, `gh release`, `gh pr create`, `git push`) and irreversible commands (`rm -r`, `rm -rf`, `git reset --hard`, `git clean -f`, `git checkout --`, `sudo`) |
+| webfetch, websearch (2.x only) | ask | the prompt goes to a third party |
+
+Two kinds of rules. A **deny** is hard: it is the compliance core and overrides whatever you configured for the same pattern, on both OpenCode versions. An **ask** or **allow** is soft: your own rule for the same pattern wins, so a project that needs `curl` all day puts `"curl *": "allow"` (1.x) or `{ "action": "shell", "resource": "curl *", "effect": "allow" }` (2.x) into its config and is not asked again. A category you set as a blanket string on 1.x (e.g. `"edit": "ask"`) keeps that value and still receives the secret denies. Governed by the same `enforce` flag as the rest of the compliance layer.
+
+Reading a secret through the shell (`cat .env`) is not caught by the read rules. OpenCode 2 has an experimental shell scanner for that (`experimental.portable_shell_scanner`); turn it on in your config if you want that gap closed.
 
 ### What this does not cover
 

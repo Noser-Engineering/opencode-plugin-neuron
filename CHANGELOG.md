@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (0.6.0)
+
+### Changed: the permission baseline stops asking for everyday work
+
+Up to 0.5.2 the baseline was `"*": "ask"` plus `edit: "ask"`: every file edit and every tool not on a short allow list prompted. On a 30-edit agent run that was 30 prompts, and on OpenCode 2 even a project's own `edit` rule could not relax it. The new baseline allows read, edit and shell by default, denies reading or editing secret files (with a longer list: `.netrc`, `.git-credentials`, `.aws/`, `.ssh/`, `.kube/config`, `.docker/config.json`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.env.example` excepted), and asks only for network egress, cloud CLIs, publishing, `git push` and irreversible commands, plus `webfetch`/`websearch`.
+
+Denies are hard and override a user's rule for the same pattern on both versions. Asks and allows are soft: a user's rule for the same pattern wins, on 1.x as before, and now on 2.x too. A blanket category on 1.x (`"edit": "ask"`) is kept and receives the secret denies instead of being left alone.
+
 ## 0.5.2
 
 ### Fixed: 0.5.0 and 0.5.1 did not load on OpenCode 1.x when installed from npm

@@ -162,6 +162,39 @@ describe("applyCompliance", () => {
   })
 })
 
+describe("DEFAULT_PERMISSION_POLICY", () => {
+  const bash = DEFAULT_PERMISSION_POLICY.bash as Record<string, string>
+  const read = DEFAULT_PERMISSION_POLICY.read as Record<string, string>
+  const edit = DEFAULT_PERMISSION_POLICY.edit as Record<string, string>
+
+  it("allows everyday work without asking", () => {
+    expect(DEFAULT_PERMISSION_POLICY["*"]).toBeUndefined()
+    expect(read["*"]).toBe("allow")
+    expect(edit["*"]).toBe("allow")
+    expect(bash["*"]).toBe("allow")
+    expect(Object.values(bash)).not.toContain("deny")
+  })
+
+  it("denies secrets for reading and editing alike, with an example-file exception", () => {
+    for (const pattern of ["**/.env", "**/.env.*", "**/.npmrc", "**/.netrc", "**/.aws/**", "**/.ssh/**", "**/*.pem", "**/*.key"]) {
+      expect(read[pattern]).toBe("deny")
+      expect(edit[pattern]).toBe("deny")
+    }
+    expect(read["**/.env.example"]).toBe("allow")
+    // The exception has to come after the deny it carves out of; OpenCode 2
+    // picks the last matching rule.
+    const keys = Object.keys(read)
+    expect(keys.indexOf("**/.env.example")).toBeGreaterThan(keys.indexOf("**/.env.*"))
+  })
+
+  it("asks only when data leaves the machine or something is irreversible", () => {
+    for (const pattern of ["curl *", "wget *", "ssh *", "scp *", "rsync *", "az *", "aws *", "gcloud *", "kubectl *", "docker push*", "npm publish*", "gh release*", "git push*", "rm -rf *", "git reset --hard*", "sudo *"]) {
+      expect(bash[pattern]).toBe("ask")
+    }
+    expect(DEFAULT_PERMISSION_POLICY.webfetch).toBe("ask")
+  })
+})
+
 describe("applyPermissionPolicy", () => {
   it("writes the full default policy into an empty config", () => {
     const config: OpenCodeConfig = {}
@@ -172,34 +205,41 @@ describe("applyPermissionPolicy", () => {
   })
 
   it("keeps the user's top-level default instead of overwriting it", () => {
-    const config: OpenCodeConfig = { permission: { "*": "allow" } }
+    const config: OpenCodeConfig = { permission: { "*": "ask" } }
 
     applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
 
-    expect(config.permission?.["*"]).toBe("allow")
+    expect(config.permission?.["*"]).toBe("ask")
   })
 
-  it("adds missing patterns to a category without touching existing ones", () => {
-    const config: OpenCodeConfig = { permission: { bash: { "*": "allow", "rm *": "allow" } } }
+  it("lets the user relax an ask but never a secret deny", () => {
+    const config: OpenCodeConfig = {
+      permission: { bash: { "curl *": "allow" }, read: { "**/.env": "allow" } },
+    }
 
     applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
 
-    // User's own choices for patterns we also default survive untouched.
-    expect((config.permission?.bash as Record<string, string>)["*"]).toBe("allow")
-    expect((config.permission?.bash as Record<string, string>)["rm *"]).toBe("allow")
-    // A pattern the user never mentioned gets our default.
-    expect((config.permission?.bash as Record<string, string>)["git push*"]).toBe("ask")
+    const bash = config.permission?.bash as Record<string, string>
+    const read = config.permission?.read as Record<string, string>
+    // A soft rule the user set survives.
+    expect(bash["curl *"]).toBe("allow")
+    // A soft rule the user never mentioned gets our default.
+    expect(bash["git push*"]).toBe("ask")
+    // A hard rule wins over the user's allow.
+    expect(read["**/.env"]).toBe("deny")
   })
 
-  it("leaves a category the user set as a blanket rule untouched", () => {
-    const config: OpenCodeConfig = { permission: { edit: "allow" } }
+  it("keeps a blanket category the user set, but still injects the secret denies", () => {
+    const config: OpenCodeConfig = { permission: { edit: "ask" } }
 
     applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
 
-    expect(config.permission?.edit).toBe("allow")
+    const edit = config.permission?.edit as Record<string, string>
+    expect(edit["*"]).toBe("ask")
+    expect(edit["**/.env"]).toBe("deny")
   })
 
-  it("leaves an unrelated permission category alone", () => {
+  it("leaves a user's webfetch choice alone", () => {
     const config: OpenCodeConfig = { permission: { webfetch: "allow" } as OpenCodeConfig["permission"] }
 
     applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)

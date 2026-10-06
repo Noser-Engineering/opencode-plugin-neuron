@@ -4,7 +4,7 @@ import { applyModelInfo, emptyModelInfo } from "../discovery.js"
 import { parsePluginOptions } from "../options.js"
 import { createDiscoveryCache, type DiscoveryCache } from "../plugin.js"
 import type { LiteLLMModel, ModelInfo, NeuronProfile, ParsedPluginOptions } from "../types.js"
-import { applyDenyList, applyPermissionRules, toPermissionRules } from "./compliance.js"
+import { applyDenyList, applyPermissionRules, toPermissionRules, V2_EXTRA_PERMISSIONS } from "./compliance.js"
 import type { NeuronContext, Registration, V2ModelInfo, V2ProviderInfo } from "./context.js"
 import { toModelInfo } from "./model.js"
 
@@ -163,7 +163,7 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
       error: describe(error),
     })
   }
-  const rules = toPermissionRules(DEFAULT_PERMISSION_POLICY)
+  const rules = [...toPermissionRules(DEFAULT_PERMISSION_POLICY), ...toPermissionRules(V2_EXTRA_PERMISSIONS)]
   const registrations = [
     await ctx.provider.transform((editor) => applyDenyList(editor, policy, declared, ownProfiles)),
     await ctx.agent.transform((editor) => applyPermissionRules(editor, rules)),

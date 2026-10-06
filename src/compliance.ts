@@ -13,84 +13,118 @@ import type { OpenCodeConfig, PermissionCategory, PermissionConfig, PermissionRu
 export const BLOCKED_PROVIDERS: readonly string[] = ["opencode", "opencode-go"]
 
 /**
- * Baseline tool permissions for the agent: keep it out of secrets by default,
- * let read-only inspection through without asking, and require confirmation
- * for anything that changes state or leaves the machine.
- *
- * Fixed here rather than exposed as a plugin option, deliberately: this is a
- * Noser-wide baseline, not something a project should individually tune down.
+ * Files that hold credentials. Reading one would put a secret into the
+ * conversation, editing one could plant a credential; neither is ever
+ * something an agent needs for ordinary work.
  */
-export const DEFAULT_PERMISSION_POLICY: PermissionConfig = {
-  "*": "ask",
-  read: {
-    "**/.env": "deny",
-    "**/.env.*": "deny",
-    "**/.npmrc": "deny",
-    "**/.pypirc": "deny",
-    "**/credentials": "deny",
-    "**/credentials.json": "deny",
-    "**/id_rsa": "deny",
-    "**/id_ed25519": "deny",
-    "**/*_rsa": "deny",
-    "**/*_ed25519": "deny",
-    "*": "allow",
-  },
-  edit: {
-    "**/.env": "deny",
-    "**/.env.*": "deny",
-    "**/.npmrc": "deny",
-    "**/.pypirc": "deny",
-    "*": "ask",
-  },
-  bash: {
-    "*": "ask",
-    "ls *": "allow",
-    "pwd": "allow",
-    "git status*": "allow",
-    "git diff*": "allow",
-    "git log*": "allow",
-    "git show*": "allow",
-    "rg *": "allow",
-    "grep *": "allow",
-    "find *": "allow",
-    "npm test*": "allow",
-    "npm run test*": "allow",
-    "pnpm test*": "allow",
-    "pnpm run test*": "allow",
-    "rm *": "ask",
-    "rmdir *": "ask",
-    "git push*": "ask",
-    "git checkout*": "ask",
-    "curl *": "ask",
-    "wget *": "ask",
-  },
+const SECRET_PATTERNS: readonly string[] = [
+  "**/.env",
+  "**/.env.*",
+  "**/.npmrc",
+  "**/.pypirc",
+  "**/.netrc",
+  "**/.git-credentials",
+  "**/credentials",
+  "**/credentials.json",
+  "**/.aws/**",
+  "**/.ssh/**",
+  "**/.kube/config",
+  "**/.docker/config.json",
+  "**/id_rsa",
+  "**/id_ed25519",
+  "**/*_rsa",
+  "**/*_ed25519",
+  "**/*.pem",
+  "**/*.key",
+  "**/*.p12",
+  "**/*.pfx",
+]
+
+/** Templates that look like secrets but are meant to be read. Listed after the denies so they win in OpenCode 2. */
+const SECRET_EXCEPTIONS: readonly string[] = ["**/.env.example", "**/.env.sample"]
+
+/** Shell commands that send data off the machine or are hard to undo. */
+const SHELL_ASK_PATTERNS: readonly string[] = [
+  // network egress
+  "curl *",
+  "wget *",
+  "ssh *",
+  "scp *",
+  "sftp *",
+  "rsync *",
+  "nc *",
+  "ncat *",
+  // cloud and cluster access
+  "az *",
+  "aws *",
+  "gcloud *",
+  "kubectl *",
+  "docker push*",
+  "docker login*",
+  // publishing
+  "npm publish*",
+  "pnpm publish*",
+  "twine *",
+  "gh release*",
+  "gh pr create*",
+  "git push*",
+  // irreversible
+  "rm -rf *",
+  "rm -r *",
+  "git reset --hard*",
+  "git clean -f*",
+  "git checkout -- *",
+  "sudo *",
+]
+
+function withEffect(patterns: readonly string[], effect: PermissionRule): PermissionCategory {
+  return Object.fromEntries(patterns.map((pattern) => [pattern, effect]))
 }
 
-const PERMISSION_CATEGORIES = ["read", "edit", "bash"] as const
+/**
+ * Baseline tool permissions: everyday work (read, edit, build, test, commit)
+ * runs without a prompt; secrets are off limits; a prompt appears only when
+ * data leaves the machine or something cannot be undone.
+ *
+ * Two kinds of rules live here. A `deny` is hard: it is the compliance
+ * core and overrides whatever the user configured for the same pattern. An
+ * `ask` or `allow` is soft: a user's own rule for the same pattern wins.
+ *
+ * Fixed here rather than exposed as a plugin option, deliberately: this is a
+ * Noser-wide baseline. A project that needs more relaxes a soft rule in its
+ * own config; `enforce: false` is the only way around the hard ones.
+ */
+export const DEFAULT_PERMISSION_POLICY: PermissionConfig = {
+  read: { "*": "allow", ...withEffect(SECRET_PATTERNS, "deny"), ...withEffect(SECRET_EXCEPTIONS, "allow") },
+  edit: { "*": "allow", ...withEffect(SECRET_PATTERNS, "deny") },
+  bash: { "*": "allow", ...withEffect(SHELL_ASK_PATTERNS, "ask") },
+  // The prompt, or parts of it, goes to a third party.
+  webfetch: "ask",
+}
 
 /**
- * Fills in a category's default patterns, without touching a pattern the user
- * already set — including to a different rule than ours. A category the user
- * set as a plain blanket rule (e.g. `edit: "allow"`) is left untouched
- * entirely: expanding it into per-pattern rules would change behavior nobody
- * asked for.
+ * Merges one category of the baseline into what the user has: hard rules
+ * (deny) overwrite, soft rules fill gaps only. A category the user set as a
+ * plain blanket rule (e.g. `edit: "ask"`) keeps that value as its `*` entry
+ * and still receives the hard rules; the soft ones would only restate the
+ * blanket the user chose.
  */
 function mergePermissionCategory(
   existing: PermissionRule | PermissionCategory | undefined,
   defaults: PermissionCategory,
 ): PermissionRule | PermissionCategory {
-  if (typeof existing === "string") return existing
-  const merged: PermissionCategory = { ...existing }
+  const blanket = typeof existing === "string" ? existing : undefined
+  const merged: PermissionCategory = blanket ? { "*": blanket } : { ...(existing as PermissionCategory | undefined) }
   for (const [pattern, rule] of Object.entries(defaults)) {
-    if (!(pattern in merged)) merged[pattern] = rule
+    if (rule === "deny") merged[pattern] = rule
+    else if (!blanket && !(pattern in merged)) merged[pattern] = rule
   }
   return merged
 }
 
 /**
- * Adds the baseline permission policy to whatever the user already has,
- * filling in only what is missing. Safe to call repeatedly: once every
- * default pattern exists, a later call finds nothing left to add.
+ * Adds the baseline permission policy to whatever the user already has.
+ * Safe to call repeatedly: a second call changes nothing.
  */
 export function applyPermissionPolicy(config: OpenCodeConfig, policy: PermissionConfig): void {
   const existing = config.permission ?? {}
@@ -98,10 +132,17 @@ export function applyPermissionPolicy(config: OpenCodeConfig, policy: Permission
 
   if (existing["*"] === undefined && policy["*"] !== undefined) merged["*"] = policy["*"]
 
-  for (const category of PERMISSION_CATEGORIES) {
-    const defaults = policy[category]
-    if (!defaults || typeof defaults === "string") continue
-    merged[category] = mergePermissionCategory(existing[category], defaults)
+  for (const [category, defaults] of Object.entries(policy)) {
+    if (category === "*" || defaults === undefined) continue
+    if (typeof defaults === "string") {
+      if (existing[category] === undefined) merged[category] = defaults
+      continue
+    }
+    if (typeof defaults !== "object" || defaults === null) continue
+    merged[category] = mergePermissionCategory(
+      existing[category] as PermissionRule | PermissionCategory | undefined,
+      defaults as PermissionCategory,
+    )
   }
 
   config.permission = merged

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { DEFAULT_PERMISSION_POLICY } from "../../src/compliance.js"
-import { applyDenyList, applyPermissionRules, deniedProviderIDs, toPermissionRules } from "../../src/v2/compliance.js"
+import { applyDenyList, applyPermissionRules, deniedProviderIDs, toPermissionRules, V2_EXTRA_PERMISSIONS } from "../../src/v2/compliance.js"
 import type { AgentRecord, PermissionRule, ProviderEditor, ProviderRecord, V2ProviderInfo } from "../../src/v2/context.js"
 
 function record(id: string, activation: V2ProviderInfo["activation"]): ProviderRecord {
@@ -65,27 +65,35 @@ describe("applyDenyList", () => {
 describe("toPermissionRules", () => {
   const rules = toPermissionRules(DEFAULT_PERMISSION_POLICY)
 
-  it("puts the blanket rule first so later rules win", () => {
-    expect(rules[0]).toEqual({ action: "*", resource: "*", effect: "ask" })
+  it("has no blanket rule across all actions", () => {
+    expect(rules.some((r) => r.action === "*")).toBe(false)
   })
 
-  it("renames bash to shell and keeps command patterns", () => {
-    expect(rules).toContainEqual({ action: "shell", resource: "git status*", effect: "allow" })
-    expect(rules).toContainEqual({ action: "shell", resource: "rm *", effect: "ask" })
+  it("renames bash to shell, allows by default and asks for egress and publishing", () => {
+    const shell = rules.filter((r) => r.action === "shell")
+    expect(shell[0]).toEqual({ action: "shell", resource: "*", effect: "allow" })
+    expect(shell).toContainEqual({ action: "shell", resource: "curl *", effect: "ask" })
+    expect(shell).toContainEqual({ action: "shell", resource: "git push*", effect: "ask" })
+    expect(shell).toContainEqual({ action: "shell", resource: "rm -rf *", effect: "ask" })
     expect(rules.some((r) => r.action === "bash")).toBe(false)
   })
 
-  it("translates **/ globs to v2 wildcards and orders each category broad-first", () => {
+  it("translates **/ globs to v2 wildcards and orders each category broad-first, exceptions last", () => {
     const read = rules.filter((r) => r.action === "read")
     expect(read[0]).toEqual({ action: "read", resource: "*", effect: "allow" })
     expect(read).toContainEqual({ action: "read", resource: "*.env", effect: "deny" })
     expect(read).toContainEqual({ action: "read", resource: "*.env.*", effect: "deny" })
-    expect(read).toContainEqual({ action: "read", resource: "*_rsa", effect: "deny" })
+    expect(read).toContainEqual({ action: "read", resource: "*.ssh/*", effect: "deny" })
+    expect(read.findIndex((r) => r.resource === "*.env.example")).toBeGreaterThan(read.findIndex((r) => r.resource === "*.env.*"))
     expect(read.some((r) => r.resource.includes("**"))).toBe(false)
   })
 
   it("leaves a category that is a plain blanket rule as one rule", () => {
     expect(toPermissionRules({ edit: "allow" })).toEqual([{ action: "edit", resource: "*", effect: "allow" }])
+  })
+
+  it("carries the v2-only extras", () => {
+    expect(toPermissionRules(V2_EXTRA_PERMISSIONS)).toEqual([{ action: "websearch", resource: "*", effect: "ask" }])
   })
 })
 
@@ -101,7 +109,7 @@ describe("applyPermissionRules", () => {
   }
 
   const rules: PermissionRule[] = [
-    { action: "*", resource: "*", effect: "ask" },
+    { action: "shell", resource: "curl *", effect: "ask" },
     { action: "read", resource: "*.env", effect: "deny" },
   ]
 
@@ -113,12 +121,28 @@ describe("applyPermissionRules", () => {
     expect(plan.permissions).toEqual(rules)
   })
 
+  it("lets a user's rule for the same pattern win over an ask, but not over a deny", () => {
+    const build: AgentRecord = {
+      id: "build",
+      permissions: [
+        { action: "shell", resource: "curl *", effect: "allow" },
+        { action: "read", resource: "*.env", effect: "allow" },
+      ],
+    }
+    applyPermissionRules(editor([build]), rules)
+    expect(build.permissions).toEqual([
+      { action: "shell", resource: "curl *", effect: "allow" },
+      { action: "read", resource: "*.env", effect: "allow" },
+      { action: "read", resource: "*.env", effect: "deny" },
+    ])
+  })
+
   it("skips a rule the agent already has verbatim", () => {
     const build: AgentRecord = { id: "build", permissions: [{ action: "read", resource: "*.env", effect: "deny" }] }
     applyPermissionRules(editor([build]), rules)
     expect(build.permissions).toEqual([
       { action: "read", resource: "*.env", effect: "deny" },
-      { action: "*", resource: "*", effect: "ask" },
+      { action: "shell", resource: "curl *", effect: "ask" },
     ])
   })
 })

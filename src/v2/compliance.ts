@@ -31,6 +31,13 @@ export function applyDenyList(
   for (const id of deniedProviderIDs(editor.list(), policy, declared, ownProfiles)) editor.remove(id)
 }
 
+/**
+ * Rules that only exist on OpenCode 2. `websearch` sends the query to a
+ * third party; OpenCode 1 has no such tool, and an unknown key would fail
+ * its config validation.
+ */
+export const V2_EXTRA_PERMISSIONS: PermissionConfig = { websearch: "ask" }
+
 /** v1 permission actions that were renamed in v2. */
 const ACTION_RENAMES: Record<string, string> = { bash: "shell" }
 
@@ -67,17 +74,27 @@ function sameRule(a: PermissionRule, b: PermissionRule): boolean {
   return a.action === b.action && a.resource === b.resource && a.effect === b.effect
 }
 
+function samePattern(a: PermissionRule, b: PermissionRule): boolean {
+  return a.action === b.action && a.resource === b.resource
+}
+
 /**
  * Appends the baseline to every agent. Last match wins in v2, so appending is
- * what makes the baseline effective over OpenCode's own defaults. Exact
- * duplicates are skipped; they would change nothing. Pure, see applyDenyList.
+ * what makes a rule effective. A hard rule (deny) is appended unless present
+ * verbatim, so it beats OpenCode's defaults and a user's allow alike. A soft
+ * rule (ask/allow) is skipped when the agent already carries any rule for
+ * the same action and pattern: that is the user's decision. Pure, see
+ * applyDenyList.
  */
 export function applyPermissionRules(editor: AgentEditor, rules: readonly PermissionRule[]): void {
   for (const agent of editor.list()) {
     editor.update(agent.id, (target) => {
       for (const rule of rules) {
-        if (target.permissions.some((existing) => sameRule(existing, rule))) continue
-        target.permissions.push(rule)
+        const skip =
+          rule.effect === "deny"
+            ? target.permissions.some((existing) => sameRule(existing, rule))
+            : target.permissions.some((existing) => samePattern(existing, rule))
+        if (!skip) target.permissions.push(rule)
       }
     })
   }
