@@ -62,7 +62,15 @@ run_case() {
       XDG_DATA_HOME="$dir/xdg-data" \
       XDG_CACHE_HOME="$dir/xdg-cache" \
       ANTHROPIC_API_KEY=sk-dummy-not-a-real-key \
-      opencode run --standalone --model nobody/nothing "hi" >/dev/null 2>&1 || true
+      opencode run --standalone --model nobody/nothing "hi" >/dev/null 2>&1 &
+    local pid=$!
+    # A standalone server occasionally fails to exit; the probe has written
+    # its files long before that, so give up on the process after a while.
+    (sleep 90 && kill "$pid" 2>/dev/null) &
+    local watchdog=$!
+    wait "$pid" 2>/dev/null || true
+    kill "$watchdog" 2>/dev/null
+    wait "$watchdog" 2>/dev/null || true
   )
 }
 

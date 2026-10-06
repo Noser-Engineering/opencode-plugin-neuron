@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+### Fixed: 0.5.0 and 0.5.1 did not load on OpenCode 1.x when installed from npm
+
+OpenCode 1.x (verified on 1.16.0 through 1.18.34) resolves an npm plugin package through `exports["./server"]` first, exactly like OpenCode 2, and then requires the default export to carry a `server()` function. 0.5.0 introduced that export for OpenCode 2 with a default export of `{ id, setup }` only, so every OpenCode 1 installation via the package name silently dropped the plugin ("must default export an object with server()" in the log): no profiles, no Zen block, no permission baseline. The `./server` entry now exports `{ id, setup, server }`; OpenCode 2 calls `setup`, OpenCode 1 calls `server`. The 1.x CI check now loads the plugin as a package directory so the exports resolution is covered, and the 2.x check got a watchdog around the standalone server.
+
 ## 0.5.1
 
 ### Fixed: OpenCode Zen was not blocked on OpenCode 2

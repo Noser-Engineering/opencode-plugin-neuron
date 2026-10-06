@@ -77,10 +77,13 @@ make_case() {
   echo "$dir"
 }
 
-# The plugin entry points straight at the local build. A package name here
-# would make OpenCode install that package from the registry and hand the
-# options to it, not to the code under test.
-readonly PLUGIN_SPEC="file://$REPO_ROOT/dist/index.js"
+# The plugin entry points at the repository root as a package directory, so
+# OpenCode resolves the entry through package.json exactly as it does for an
+# npm install (exports["./server"] first, then "."). A package name here would
+# make OpenCode install that package from the registry and hand the options
+# to it, not to the code under test; a direct file path would skip the
+# exports resolution that broke 0.5.0 and 0.5.1 on OpenCode 1.18.
+readonly PLUGIN_SPEC="file://$REPO_ROOT"
 
 # Argument 1: plugin options as JSON. Argument 2 (optional): extra top-level
 # config members, without the surrounding braces.
