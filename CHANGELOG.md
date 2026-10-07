@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.6.0)
+## 0.6.0
 
 ### Changed: the permission baseline stops asking for everyday work
 
