@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed: the baseline's blanket allow overrode a user's own specific rules
+
+OpenCode (1.x and 2.x) takes the last matching permission rule. The baseline appended its soft `"*": "allow"` for `read`, `edit` and `bash`/`shell` after the user's entries in that category, so a user's `read: { "secret/**": "deny" }` or `bash: { "terraform *": "ask" }` was silently overridden. The blanket now goes before the user's rules; the secret denies and the `.env.example` exception still come after them. Up to 0.5.2 the same mechanism appended a top-level `"*": "ask"` that turned every user allow back into a prompt; 0.6.0 had already dropped that rule.
+
 ## 0.6.0
 
 ### Changed: the permission baseline stops asking for everyday work

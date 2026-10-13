@@ -108,17 +108,34 @@ export const DEFAULT_PERMISSION_POLICY: PermissionConfig = {
  * plain blanket rule (e.g. `edit: "ask"`) keeps that value as its `*` entry
  * and still receives the hard rules; the soft ones would only restate the
  * blanket the user chose.
+ *
+ * Order matters: OpenCode 1 takes the last matching entry. The baseline's
+ * leading soft rules (the `*` default) therefore go before the user's
+ * entries, so a user's specific rule beats our blanket. From the first hard
+ * rule on, the baseline goes after them: the denies must win, and the
+ * exceptions listed after the denies must beat those.
  */
 function mergePermissionCategory(
   existing: PermissionRule | PermissionCategory | undefined,
   defaults: PermissionCategory,
 ): PermissionRule | PermissionCategory {
-  const blanket = typeof existing === "string" ? existing : undefined
-  const merged: PermissionCategory = blanket ? { "*": blanket } : { ...(existing as PermissionCategory | undefined) }
-  for (const [pattern, rule] of Object.entries(defaults)) {
-    if (rule === "deny") merged[pattern] = rule
-    else if (!blanket && !(pattern in merged)) merged[pattern] = rule
+  if (typeof existing === "string") {
+    const merged: PermissionCategory = { "*": existing }
+    for (const [pattern, rule] of Object.entries(defaults)) if (rule === "deny") merged[pattern] = rule
+    return merged
   }
+  const user = existing ?? {}
+  const entries = Object.entries(defaults)
+  const firstHard = entries.findIndex(([, rule]) => rule === "deny")
+  const leading = firstHard === -1 ? entries : entries.slice(0, firstHard)
+  const trailing = firstHard === -1 ? [] : entries.slice(firstHard)
+
+  const merged: PermissionCategory = {}
+  for (const [pattern, rule] of leading) if (!(pattern in user)) merged[pattern] = rule
+  for (const [pattern, rule] of Object.entries(user)) {
+    if (!trailing.some(([p]) => p === pattern)) merged[pattern] = rule
+  }
+  for (const [pattern, rule] of trailing) merged[pattern] = rule === "deny" ? rule : (user[pattern] ?? rule)
   return merged
 }
 

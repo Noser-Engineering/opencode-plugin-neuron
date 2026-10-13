@@ -50,8 +50,8 @@ function toV2Resource(pattern: string): string {
 
 function categoryRules(action: string, category: V1Rule | PermissionCategory): PermissionRule[] {
   if (typeof category === "string") return [{ action, resource: "*", effect: category }]
-  // v1 picks the most specific matching pattern; v2 picks the last matching
-  // rule. Emitting the blanket pattern first keeps the specific ones winning.
+  // Last matching rule wins. Emitting the blanket pattern first keeps the
+  // specific ones winning.
   const entries = Object.entries(category)
   const blanket = entries.filter(([pattern]) => pattern === "*")
   const specific = entries.filter(([pattern]) => pattern !== "*")
@@ -79,22 +79,30 @@ function samePattern(a: PermissionRule, b: PermissionRule): boolean {
 }
 
 /**
- * Appends the baseline to every agent. Last match wins in v2, so appending is
+ * Adds the baseline to every agent. Last match wins in v2, so appending is
  * what makes a rule effective. A hard rule (deny) is appended unless present
  * verbatim, so it beats OpenCode's defaults and a user's allow alike. A soft
  * rule (ask/allow) is skipped when the agent already carries any rule for
- * the same action and pattern: that is the user's decision. Pure, see
+ * the same action and pattern: that is the user's decision. A soft blanket
+ * (resource `*`) goes in front of the agent's first specific rule for the
+ * same action instead of at the end, where it would override them. Pure, see
  * applyDenyList.
  */
 export function applyPermissionRules(editor: AgentEditor, rules: readonly PermissionRule[]): void {
   for (const agent of editor.list()) {
     editor.update(agent.id, (target) => {
       for (const rule of rules) {
-        const skip =
-          rule.effect === "deny"
-            ? target.permissions.some((existing) => sameRule(existing, rule))
-            : target.permissions.some((existing) => samePattern(existing, rule))
-        if (!skip) target.permissions.push(rule)
+        if (rule.effect === "deny") {
+          if (!target.permissions.some((existing) => sameRule(existing, rule))) target.permissions.push(rule)
+          continue
+        }
+        if (target.permissions.some((existing) => samePattern(existing, rule))) continue
+        const firstSpecific =
+          rule.resource === "*"
+            ? target.permissions.findIndex((existing) => existing.action === rule.action && existing.resource !== "*")
+            : -1
+        if (firstSpecific === -1) target.permissions.push(rule)
+        else target.permissions.splice(firstSpecific, 0, rule)
       }
     })
   }

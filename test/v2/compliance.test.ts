@@ -137,6 +137,14 @@ describe("applyPermissionRules", () => {
     ])
   })
 
+  it("puts a soft blanket before the agent's specific rules for the same action", () => {
+    const userDeny: PermissionRule = { action: "read", resource: "secret/*", effect: "deny" }
+    const blanket: PermissionRule = { action: "read", resource: "*", effect: "allow" }
+    const build: AgentRecord = { id: "build", permissions: [userDeny] }
+    applyPermissionRules(editor([build]), [blanket])
+    expect(build.permissions).toEqual([blanket, userDeny])
+  })
+
   it("skips a rule the agent already has verbatim", () => {
     const build: AgentRecord = { id: "build", permissions: [{ action: "read", resource: "*.env", effect: "deny" }] }
     applyPermissionRules(editor([build]), rules)

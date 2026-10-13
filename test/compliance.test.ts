@@ -229,6 +229,20 @@ describe("applyPermissionPolicy", () => {
     expect(read["**/.env"]).toBe("deny")
   })
 
+  it("puts our blanket default before the user's rules, which OpenCode matches last-wins", () => {
+    const config: OpenCodeConfig = { permission: { read: { "secret/**": "deny" }, bash: { "terraform *": "ask" } } }
+
+    applyPermissionPolicy(config, DEFAULT_PERMISSION_POLICY)
+
+    const read = Object.keys(config.permission?.read as Record<string, string>)
+    const bash = Object.keys(config.permission?.bash as Record<string, string>)
+    expect(read.indexOf("*")).toBeLessThan(read.indexOf("secret/**"))
+    expect(bash.indexOf("*")).toBeLessThan(bash.indexOf("terraform *"))
+    // Our denies still come after the user's rules, the example-file exception after them.
+    expect(read.indexOf("**/.env")).toBeGreaterThan(read.indexOf("secret/**"))
+    expect(read.indexOf("**/.env.example")).toBeGreaterThan(read.indexOf("**/.env.*"))
+  })
+
   it("keeps a blanket category the user set, but still injects the secret denies", () => {
     const config: OpenCodeConfig = { permission: { edit: "ask" } }
 
