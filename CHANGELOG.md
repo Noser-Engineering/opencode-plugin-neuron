@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
 
 ### Fixed: the baseline's blanket allow overrode a user's own specific rules
 
