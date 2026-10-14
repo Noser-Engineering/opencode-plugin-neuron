@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 ### Fixed: secret files at the repository root were readable and editable on OpenCode 1
 
