@@ -67,6 +67,17 @@ run_debug_config() {
   )
 }
 
+run_debug_agent() {
+  local dir="$1"
+  (
+    cd "$dir"
+    env -u OPENCODE_CONFIG \
+      XDG_CONFIG_HOME="$dir/xdg-config" \
+      XDG_DATA_HOME="$dir/xdg-data" \
+      opencode debug agent build 2>/dev/null
+  )
+}
+
 # Builds an isolated workspace. Argument 2 is the project opencode.json.
 make_case() {
   local name="$1" config="$2"
@@ -187,6 +198,46 @@ while IFS= read -r line; do
     OK*) pass "${line#OK }" ;;
   esac
 done <"$WORKSPACE/resolved-report"
+
+# ---------------------------------------------------------------------------
+# 6. The effective permission decisions, evaluated like OpenCode does: last
+#    matching rule wins, `*` matches any characters, paths are relative to
+#    the worktree. Catches a pattern that looks right but never matches.
+# ---------------------------------------------------------------------------
+echo "case: effective permissions"
+agent="$(run_debug_agent "$protected_dir")"
+node -e '
+  const rules = JSON.parse(require("node:fs").readFileSync(0, "utf8")).permission
+  const matches = (value, pattern) => {
+    let source = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")
+    if (source.endsWith(" .*")) source = source.slice(0, -3) + "( .*)?"
+    return new RegExp(`^${source}$`, "s").test(value)
+  }
+  const decide = (permission, pattern) =>
+    rules.findLast((rule) => matches(permission, rule.permission) && matches(pattern, rule.pattern))?.action ?? "ask"
+  const expected = [
+    ["read", ".env", "deny"],
+    ["read", "app/.env.local", "deny"],
+    ["edit", ".npmrc", "deny"],
+    ["read", ".env.example", "allow"],
+    ["read", "src/index.ts", "allow"],
+    ["edit", "src/index.ts", "allow"],
+    ["bash", "git status", "allow"],
+    ["bash", "git push origin main", "ask"],
+    ["webfetch", "https://example.com", "ask"],
+  ]
+  const problems = expected
+    .map(([permission, pattern, action]) => [permission, pattern, action, decide(permission, pattern)])
+    .filter(([, , action, actual]) => action !== actual)
+  for (const [permission, pattern, action, actual] of problems) console.log(`FAIL ${permission} ${pattern} is ${actual}, expected ${action}`)
+  if (!problems.length) console.log("OK secrets are denied at the root and below, everyday work is allowed, egress asks")
+' <<<"$agent" >"$WORKSPACE/agent-report"
+while IFS= read -r line; do
+  case "$line" in
+    FAIL*) fail "${line#FAIL }" ;;
+    OK*) pass "${line#OK }" ;;
+  esac
+done <"$WORKSPACE/agent-report"
 
 echo
 if ((failures)); then

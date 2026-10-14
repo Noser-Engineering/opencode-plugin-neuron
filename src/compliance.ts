@@ -77,8 +77,19 @@ const SHELL_ASK_PATTERNS: readonly string[] = [
   "sudo *",
 ]
 
+/**
+ * OpenCode 1 matches a file against its path relative to the worktree and
+ * turns `*` into `.*`, so a pattern with the `**` directory prefix demands a
+ * `/` before the name and misses the file at the repository root. Each such
+ * pattern therefore also gets its root form (`.env` next to the prefixed
+ * one), listed right before it.
+ */
+function withRootVariants(patterns: readonly string[]): string[] {
+  return patterns.flatMap((pattern) => (pattern.startsWith("**/") ? [pattern.slice(3), pattern] : [pattern]))
+}
+
 function withEffect(patterns: readonly string[], effect: PermissionRule): PermissionCategory {
-  return Object.fromEntries(patterns.map((pattern) => [pattern, effect]))
+  return Object.fromEntries(withRootVariants(patterns).map((pattern) => [pattern, effect]))
 }
 
 /**

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed: secret files at the repository root were readable and editable on OpenCode 1
+
+OpenCode 1 matches a file permission against the path relative to the worktree and turns `*` into "any characters", so `**/.env` requires a `/` before `.env`. A `.env`, `.npmrc`, `credentials.json` or `*.pem` directly in the repository root therefore matched none of the secret denies, and the baseline's `read`/`edit` allow let the agent read and edit it without a prompt; only files in subdirectories were protected. Every `**/` pattern now also carries its root form (`.env` beside `**/.env`), for the `.env.example`/`.env.sample` exceptions too. `scripts/verify-protection.sh` now evaluates the effective decisions from `opencode debug agent build` the way OpenCode does, so a pattern that never matches fails CI.
+
 ### Fixed: setup could not store the API key for OpenCode 2 on Windows
 
 With OpenCode 2 installed through npm, `opencode` on Windows is a `.cmd` shim. Node refuses to pass arguments containing JSON quotes to a batch file (CVE-2024-27980 hardening), so `credential.create` failed with "contains a cmd.exe special character", and the error message echoed the request body including the API key. Setup now resolves the real `opencode.exe` from PATH, looking through the npm shim, and synchronous spawn errors no longer leak argv. Replacing an existing credential also failed: `credential.remove` takes `credentialID` as a path parameter (`--param`), not as a request body.

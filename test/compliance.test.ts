@@ -187,6 +187,24 @@ describe("DEFAULT_PERMISSION_POLICY", () => {
     expect(keys.indexOf("**/.env.example")).toBeGreaterThan(keys.indexOf("**/.env.*"))
   })
 
+  it("denies secrets at the repository root as well as below it, the way OpenCode 1 matches", () => {
+    // OpenCode 1's Wildcard.match and evaluate(): `*` becomes `.*`, the last
+    // matching entry wins, the path is relative to the worktree.
+    const matches = (path: string, pattern: string) =>
+      new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s").test(path)
+    const evaluate = (category: Record<string, string>, path: string) =>
+      Object.entries(category).findLast(([pattern]) => matches(path, pattern))?.[1]
+
+    for (const path of [".env", ".env.local", ".npmrc", "credentials.json", "key.pem", ".ssh/id_rsa", "app/.env", "app/key.pem"]) {
+      expect(evaluate(read, path)).toBe("deny")
+      expect(evaluate(edit, path)).toBe("deny")
+    }
+    expect(evaluate(read, ".env.example")).toBe("allow")
+    expect(evaluate(read, "app/.env.example")).toBe("allow")
+    expect(evaluate(read, "src/index.ts")).toBe("allow")
+    expect(evaluate(edit, "src/index.ts")).toBe("allow")
+  })
+
   it("asks only when data leaves the machine or something is irreversible", () => {
     for (const pattern of ["curl *", "wget *", "ssh *", "scp *", "rsync *", "az *", "aws *", "gcloud *", "kubectl *", "docker push*", "npm publish*", "gh release*", "git push*", "rm -rf *", "git reset --hard*", "sudo *"]) {
       expect(bash[pattern]).toBe("ask")
