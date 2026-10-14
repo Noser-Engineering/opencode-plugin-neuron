@@ -1,8 +1,27 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { DEFAULT_CONTEXT_LIMIT, DEFAULT_OUTPUT_LIMIT, RESPONSES_API_PACKAGE_V2 } from "../../src/constants.js"
 import { toModelInfo } from "../../src/v2/model.js"
 
 describe("toModelInfo", () => {
+  it.each(["coding", "thinking", "fast"])("makes the %s alias recent and independently selectable in Desktop", (id) => {
+    const now = Date.UTC(2026, 9, 14)
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now)
+    try {
+      const info = toModelInfo({ id }, "neuron-2")
+      expect(info.time.released).toBe(now)
+      expect(info).toHaveProperty("family", id)
+      expect(info.enabled).toBe(true)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it.each(["Coding", "fast-model", "provider/thinking", "claude-sonnet"])("does not change release metadata for %s", (id) => {
+    const info = toModelInfo({ id }, "neuron-2")
+    expect(info.time.released).toBe(0)
+    expect(info).not.toHaveProperty("family")
+  })
+
   it("maps ids, limits, capabilities and prices", () => {
     const info = toModelInfo(
       {
