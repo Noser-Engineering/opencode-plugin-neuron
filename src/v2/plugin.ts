@@ -1,11 +1,11 @@
 import { DEFAULT_PERMISSION_POLICY } from "../compliance.js"
 import { PROVIDER_PACKAGE_V2 } from "../constants.js"
-import { applyModelInfo, emptyModelInfo } from "../discovery.js"
+import { applyModelInfo, emptyModelInfo, isAuthRejection } from "../discovery.js"
 import { parsePluginOptions } from "../options.js"
 import { createDiscoveryCache, type DiscoveryCache } from "../plugin.js"
 import type { LiteLLMModel, ModelInfo, NeuronProfile, ParsedPluginOptions } from "../types.js"
 import { applyDenyList, applyPermissionRules, toPermissionRules, V2_EXTRA_PERMISSIONS } from "./compliance.js"
-import type { NeuronContext, Registration, V2ModelInfo, V2ProviderInfo } from "./context.js"
+import type { Connection, ConnectionStatus, NeuronContext, Registration, V2ModelInfo, V2ProviderInfo } from "./context.js"
 import { toModelInfo } from "./model.js"
 
 export type V2LogLevel = "info" | "warn" | "error"
@@ -47,14 +47,40 @@ function describe(error: unknown): string {
 async function resolveKey(
   ctx: NeuronContext,
   profile: NeuronProfile,
-): Promise<{ apiKey?: string; conflict: boolean }> {
+): Promise<{ apiKey?: string; connection?: Connection; conflict: boolean }> {
   const connection = await ctx.integration.connection.active(profile.id)
   if (!connection) return { conflict: false }
   const credential = await ctx.integration.connection.resolve(connection)
   if (!credential || credential.type !== "key") return { conflict: false }
   const storedURL = credential.metadata?.baseURL
   if (typeof storedURL === "string" && storedURL !== profile.baseURL) return { conflict: true }
-  return { apiKey: credential.key, conflict: false }
+  return { apiKey: credential.key, connection, conflict: false }
+}
+
+/**
+ * Marks the profile's connection as needing a new key when the proxy rejects
+ * it, so OpenCode shows the problem instead of an empty model list, and
+ * clears the mark once the key works again. Best effort: a host without
+ * `connection.status` or a failing call only costs the hint.
+ */
+async function reportConnectionStatus(
+  ctx: NeuronContext,
+  profile: NeuronProfile,
+  connection: Connection | undefined,
+  status: ConnectionStatus | undefined,
+  dependencies: V2Dependencies,
+): Promise<void> {
+  const report = ctx.integration.connection.status
+  if (!connection || !report) return
+  if (!status && !connection.status) return
+  try {
+    await report({ integrationID: profile.id, connection, status })
+  } catch (error) {
+    dependencies.log("warn", `Could not report the connection status for ${profile.name}`, {
+      providerID: profile.id,
+      error: describe(error),
+    })
+  }
 }
 
 async function discover(
@@ -99,6 +125,7 @@ async function prepareProfiles(
   const results = await Promise.all(
     options.profiles.map(async (profile): Promise<ProfileRegistration | undefined> => {
       let apiKey: string | undefined
+      let connection: Connection | undefined
       try {
         const resolved = await resolveKey(ctx, profile)
         if (resolved.conflict) {
@@ -109,6 +136,7 @@ async function prepareProfiles(
           return undefined
         }
         apiKey = resolved.apiKey
+        connection = resolved.connection
       } catch (error) {
         dependencies.log("warn", `Could not read the credential for ${profile.name}`, {
           providerID: profile.id,
@@ -129,6 +157,7 @@ async function prepareProfiles(
           providerID: profile.id,
           baseURL: profile.baseURL,
         })
+        await reportConnectionStatus(ctx, profile, connection, undefined, dependencies)
         return { info, models: models.map((model) => toModelInfo(model, profile.id)) }
       } catch (error) {
         dependencies.log("warn", `Model discovery failed for ${profile.name}`, {
@@ -136,6 +165,18 @@ async function prepareProfiles(
           baseURL: profile.baseURL,
           error: describe(error),
         })
+        if (isAuthRejection(error)) {
+          await reportConnectionStatus(
+            ctx,
+            profile,
+            connection,
+            {
+              status: "needs_auth",
+              message: `${profile.baseURL} rejected the stored API key. Enter a valid key for ${profile.name}.`,
+            },
+            dependencies,
+          )
+        }
         // Registered anyway, with no models: /connect still has to offer the
         // profile so the user can fix the key.
         return { info, models: [] }

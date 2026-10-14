@@ -215,6 +215,21 @@ export function applyModelInfo(models: LiteLLMModel[], info: ModelInfo): LiteLLM
     })
 }
 
+export class DiscoveryHttpError extends Error {
+  constructor(
+    readonly status: number,
+    statusText: string,
+  ) {
+    super(`model discovery returned HTTP ${status} ${statusText}`.trim())
+    this.name = "DiscoveryHttpError"
+  }
+}
+
+/** True when the proxy rejected the key itself, as opposed to being unreachable. */
+export function isAuthRejection(error: unknown): boolean {
+  return error instanceof DiscoveryHttpError && (error.status === 401 || error.status === 403)
+}
+
 async function fetchModelList(
   url: string,
   apiKey: string | undefined,
@@ -230,9 +245,7 @@ async function fetchModelList(
     redirect: "error",
     signal: AbortSignal.timeout(options.timeoutMs),
   })
-  if (!response.ok) {
-    throw new Error(`model discovery returned HTTP ${response.status} ${response.statusText}`.trim())
-  }
+  if (!response.ok) throw new DiscoveryHttpError(response.status, response.statusText)
 
   const payload: unknown = await response.json()
   if (!asRecord(payload)) throw new Error("model discovery returned an invalid JSON object")

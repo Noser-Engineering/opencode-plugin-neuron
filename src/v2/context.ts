@@ -78,8 +78,16 @@ export interface Registration {
 
 export type Transform<Editor> = (callback: (editor: Editor) => void) => Promise<Registration>
 
+/** Shown by OpenCode on the integration; `needs_auth` asks the user to reconnect. */
+export interface ConnectionStatus {
+  status: "needs_auth"
+  message: string
+}
+
 export interface Connection {
   type: "credential" | "env"
+  /** The problem last reported for this connection, if any. */
+  status?: ConnectionStatus
 }
 
 export interface KeyCredential {
@@ -103,6 +111,8 @@ export interface NeuronContext {
     readonly connection: {
       active(integrationID: string): Promise<Connection | undefined>
       resolve(connection: Connection): Promise<KeyCredential | OtherCredential | undefined>
+      /** Optional so a host without it still loads the plugin. */
+      status?(input: { integrationID: string; connection: Connection; status: ConnectionStatus | undefined }): Promise<void>
     }
   }
   readonly event: {

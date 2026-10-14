@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -10,6 +10,7 @@ import {
   fileCredentialStore,
   OpenCodeNotFoundError,
   opencodeCredentialStore,
+  resolveOpenCodeExecutable,
   runOpenCodeBinary,
   type RunOpenCode,
 } from "../src/credential-store.js"
@@ -79,7 +80,7 @@ describe("opencodeCredentialStore", () => {
           }),
         ],
       },
-      { args: ["api", "credential.remove", "--standalone", "-d", JSON.stringify({ credentialID: "cred_1" })] },
+      { args: ["api", "credential.remove", "--standalone", "--param", "credentialID=cred_1"] },
     ])
   })
 
@@ -87,7 +88,7 @@ describe("opencodeCredentialStore", () => {
     const run = fakeRun()
     await opencodeCredentialStore(run).write({}, ["work", "unknown"])
     expect(run.calls.slice(1)).toEqual([
-      { args: ["api", "credential.remove", "--standalone", "-d", JSON.stringify({ credentialID: "cred_1" })] },
+      { args: ["api", "credential.remove", "--standalone", "--param", "credentialID=cred_1"] },
     ])
   })
 
@@ -151,5 +152,72 @@ describe("runOpenCodeBinary", () => {
   it("resolves stdout on success", async () => {
     stubExec(null, "out", "")
     await expect(runOpenCodeBinary(["api", "credential.list"])).resolves.toBe("out")
+  })
+
+  it("maps synchronous spawn errors without leaking argv", async () => {
+    execFileMock.mockImplementation(() => {
+      throw Object.assign(new Error('args[5] contains a cmd.exe special character: {"key":"sk-secret"}'), {
+        code: "ERR_INVALID_ARG_VALUE",
+      })
+    })
+    const error = await runOpenCodeBinary(["api", "credential.create", "-d", '{"key":"sk-secret"}']).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(OpenCodeNotFoundError)
+    expect((error as Error).message).not.toContain("sk-secret")
+  })
+})
+
+describe("resolveOpenCodeExecutable", () => {
+  const win = (path: string | undefined, appData?: string) =>
+    resolveOpenCodeExecutable({ platform: "win32", path, appData, arch: "x64" })
+
+  async function desktopCli(versions: string[]): Promise<{ appData: string; exe: (name: string) => string }> {
+    const appData = await mkdtemp(join(tmpdir(), "neuron-appdata-"))
+    const exe = (name: string) => join(appData, "ai.opencode.desktop", "cli", name, "opencode-cli.exe")
+    for (const name of versions) {
+      await mkdir(join(appData, "ai.opencode.desktop", "cli", name), { recursive: true })
+      await writeFile(exe(name), "")
+    }
+    return { appData, exe }
+  }
+
+  it("uses the bare name outside Windows", async () => {
+    expect(await resolveOpenCodeExecutable({ platform: "linux", path: "/usr/bin" })).toBe("opencode")
+  })
+
+  it("prefers opencode.exe on PATH", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "neuron-path-"))
+    await writeFile(join(dir, "opencode.exe"), "")
+    const { appData } = await desktopCli(["2.0.29-x64"])
+    expect(await win(`C:\\nowhere;${dir}`, appData)).toBe(join(dir, "opencode.exe"))
+  })
+
+  it("falls back to the newest CLI bundled with OpenCode Desktop for this architecture", async () => {
+    const { appData, exe } = await desktopCli(["2.0.9-x64", "2.0.29-x64", "2.1.0-arm64"])
+    expect(await win("", appData)).toBe(exe("2.0.29-x64"))
+  })
+
+  it("skips a Desktop CLI directory without the executable", async () => {
+    const { appData, exe } = await desktopCli(["2.0.20-x64"])
+    await mkdir(join(appData, "ai.opencode.desktop", "cli", "2.0.30-x64"), { recursive: true })
+    expect(await win("", appData)).toBe(exe("2.0.20-x64"))
+  })
+
+  it("looks through the npm .cmd shim to the real executable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "neuron-path-"))
+    const exe = join(dir, "node_modules", "@opencode", "cli", "bin", "opencode.exe")
+    await mkdir(join(dir, "node_modules", "@opencode", "cli", "bin"), { recursive: true })
+    await writeFile(exe, "")
+    await writeFile(
+      join(dir, "opencode.cmd"),
+      '@ECHO off\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r\n',
+    )
+    expect(await win(dir, undefined)).toBe(exe)
+  })
+
+  it("falls back to the bare name when nothing usable is found", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "neuron-path-"))
+    await writeFile(join(dir, "opencode.cmd"), "@ECHO off\r\nnode something.js %*\r\n")
+    const appData = await mkdtemp(join(tmpdir(), "neuron-appdata-"))
+    expect(await win(dir, appData)).toBe("opencode")
   })
 })

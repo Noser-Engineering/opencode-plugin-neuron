@@ -13,6 +13,7 @@ import type {
   V2ModelInfo,
   V2ProviderInfo,
 } from "../../src/v2/context.js"
+import { DiscoveryHttpError } from "../../src/discovery.js"
 import { setupNeuron, type V2Dependencies } from "../../src/v2/plugin.js"
 
 type Credentials = Record<string, KeyCredential>
@@ -76,7 +77,7 @@ class FakeContext implements NeuronContext {
       active: async (id: string): Promise<Connection | undefined> =>
         this.credentials[id] ? { type: "credential" } : undefined,
       resolve: async (_c: Connection) => undefined as KeyCredential | undefined,
-    },
+    } as NeuronContext["integration"]["connection"],
   }
 
   readonly event = {
@@ -226,6 +227,64 @@ describe("setupNeuron", () => {
 
     expect(providers.get("work")?.models).toEqual([])
     expect(d.log).toHaveBeenCalledWith("warn", expect.stringContaining("Model discovery failed"), expect.anything())
+  })
+
+  describe("connection status", () => {
+    const rejected = () => new DiscoveryHttpError(401, "Unauthorized")
+
+    function withKey(connection: Connection = { type: "credential" }) {
+      const ctx = new FakeContext({ profiles: [PROFILE] }, { work: { type: "key", key: "sk-bad" } })
+      ctx.integration.connection.active = async () => connection
+      ctx.integration.connection.resolve = async () => ({ type: "key", key: "sk-bad", metadata: { baseURL: PROFILE.baseURL } })
+      const status = vi.fn(async () => undefined)
+      ctx.integration.connection.status = status
+      return { ctx, status }
+    }
+
+    it("marks the connection as needing a new key when the proxy rejects it", async () => {
+      const { ctx, status } = withKey()
+      await setupNeuron(ctx, deps({ discoverRawModels: async () => Promise.reject(rejected()) }))
+
+      expect(ctx.rebuild().providers.get("work")?.models).toEqual([])
+      expect(status).toHaveBeenCalledWith({
+        integrationID: "work",
+        connection: { type: "credential" },
+        status: { status: "needs_auth", message: expect.stringContaining("rejected the stored API key") },
+      })
+    })
+
+    it("does not mark the connection for errors other than a rejected key", async () => {
+      const { ctx, status } = withKey()
+      await setupNeuron(ctx, deps({ discoverRawModels: async () => Promise.reject(new DiscoveryHttpError(502, "Bad Gateway")) }))
+      expect(status).not.toHaveBeenCalled()
+    })
+
+    it("clears an earlier mark once discovery succeeds", async () => {
+      const connection: Connection = { type: "credential", status: { status: "needs_auth", message: "old" } }
+      const { ctx, status } = withKey(connection)
+      await setupNeuron(ctx, deps())
+      expect(status).toHaveBeenCalledWith({ integrationID: "work", connection, status: undefined })
+    })
+
+    it("leaves a healthy connection alone", async () => {
+      const { ctx, status } = withKey()
+      await setupNeuron(ctx, deps())
+      expect(status).not.toHaveBeenCalled()
+    })
+
+    it("keeps the provider when reporting the status fails or is not supported", async () => {
+      const { ctx, status } = withKey()
+      status.mockRejectedValue(new Error("unsupported"))
+      const d = deps({ discoverRawModels: async () => Promise.reject(rejected()) })
+      await setupNeuron(ctx, d)
+      expect(ctx.rebuild().providers.has("work")).toBe(true)
+      expect(d.log).toHaveBeenCalledWith("warn", expect.stringContaining("connection status"), expect.anything())
+
+      const bare = withKey()
+      delete bare.ctx.integration.connection.status
+      await setupNeuron(bare.ctx, deps({ discoverRawModels: async () => Promise.reject(rejected()) }))
+      expect(bare.ctx.rebuild().providers.has("work")).toBe(true)
+    })
   })
 
   it("removes blocked providers unless declared in a config file and appends the permission baseline", async () => {
