@@ -97,7 +97,9 @@ export async function resolveOpenCodeExecutable(lookup: ExecutableLookup = {}): 
     for (const shim of ["opencode.cmd", "opencode.bat"]) {
       const text = await readFile(join(dir, shim), "utf8").catch(() => undefined)
       const target = text?.match(NPM_SHIM_TARGET)?.[1]
-      if (target && (await isFile(join(dir, target)))) return join(dir, target)
+      if (!target) continue
+      const resolved = join(dir, ...target.split(/[\\/]/).filter(Boolean))
+      if (await isFile(resolved)) return resolved
     }
   }
   const appData = "appData" in lookup ? lookup.appData : process.env.APPDATA
