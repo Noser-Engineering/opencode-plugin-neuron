@@ -17,18 +17,18 @@ describe("configFileCandidates", () => {
   it("lists the global and project files OpenCode 2 reads, OPENCODE_CONFIG first", () => {
     expect(configFileCandidates("/proj", { OPENCODE_CONFIG: "/etc/oc.json" }, "/home/u")).toEqual([
       "/etc/oc.json",
-      "/home/u/.config/opencode/opencode.json",
-      "/home/u/.config/opencode/opencode.jsonc",
-      "/proj/opencode.json",
-      "/proj/opencode.jsonc",
-      "/proj/.opencode/opencode.json",
-      "/proj/.opencode/opencode.jsonc",
+      join("/home/u", ".config", "opencode", "opencode.json"),
+      join("/home/u", ".config", "opencode", "opencode.jsonc"),
+      join("/proj", "opencode.json"),
+      join("/proj", "opencode.jsonc"),
+      join("/proj", ".opencode", "opencode.json"),
+      join("/proj", ".opencode", "opencode.jsonc"),
     ])
   })
 
   it("honours OPENCODE_CONFIG_DIR and XDG_CONFIG_HOME for the global directory", () => {
-    expect(configFileCandidates("/proj", { OPENCODE_CONFIG_DIR: "/cfg" }, "/home/u")[0]).toBe("/cfg/opencode.json")
-    expect(configFileCandidates("/proj", { XDG_CONFIG_HOME: "/xdg" }, "/home/u")[0]).toBe("/xdg/opencode/opencode.json")
+    expect(configFileCandidates("/proj", { OPENCODE_CONFIG_DIR: "/cfg" }, "/home/u")[0]).toBe(join("/cfg", "opencode.json"))
+    expect(configFileCandidates("/proj", { XDG_CONFIG_HOME: "/xdg" }, "/home/u")[0]).toBe(join("/xdg", "opencode", "opencode.json"))
   })
 })
 

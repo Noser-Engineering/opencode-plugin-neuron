@@ -12,7 +12,7 @@
 npx @noser-engineering/opencode-plugin-neuron setup --global
 ```
 
-**OpenCode 2.x:** Das Setup erkennt die installierte Version automatisch (`--opencode-version <1|2>` erzwingt sie). Damit der API-Key gespeichert wird, muss `opencode` im `PATH` liegen; fehlt es, landet der Key mit einer Warnung in `auth.json`, das OpenCode 2 nur beim allerersten Start übernimmt. Alternativ in OpenCode `/connect` ausführen und das Profil wählen, der Key wird ohne Neustart übernommen. Updates des Plugins holt `opencode plugin update`.
+**OpenCode 2.x:** Das Setup erkennt die installierte Version automatisch (`--opencode-version <1|2>` erzwingt sie). Den API-Key speichert das Setup über die `opencode`-CLI. Unter Windows findet es auch die per npm installierte CLI und die CLI, die OpenCode Desktop mitbringt. Findet es gar keine, landet der Key mit einer Warnung in `auth.json`, das OpenCode 2 nur beim allerersten Start übernimmt. Alternativ in OpenCode `/connect` ausführen und das Profil wählen, der Key wird ohne Neustart übernommen. Updates des Plugins holt `opencode plugin update`.
 
 ### Ohne Node.js installieren
 
@@ -112,7 +112,8 @@ Der leere Block `{}` genügt, weil damit nur die Freigabe ausgesprochen wird; al
 
 ## Probleme
 
-- `401 Unauthorized`: API-Key prüfen und das Setup erneut ausführen.
+- `401 Unauthorized`: API-Key prüfen und das Setup erneut ausführen. In OpenCode 2 ist die Verbindung des Profils dann als „neu anmelden" markiert; alternativ `/connect` ausführen und das Profil wählen.
+- OpenCode 2 zeigt das Profil, aber keine Modelle: Meist ist ein alter Key gespeichert. Setup mit dem richtigen Key erneut ausführen.
 - Plugin wird nicht gefunden: Node.js/npm-Version prüfen und den Befehl erneut ausführen.
 - Modelle fehlen: OpenCode neu starten; die Modellliste wird beim Start geladen.
 - Ein Provider, den du bisher genutzt hast, ist verschwunden: Er wurde nie in `opencode.json` eingetragen, sondern lief über automatisch geladene Zugangsdaten. Ist er für dieses Projekt freigegeben, trag ihn ein wie oben unter „Kundenaccount verwenden". Ist er es nicht, hat die Sperre ihre Arbeit getan.

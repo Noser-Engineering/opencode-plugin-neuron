@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed: setup could not store the API key for OpenCode 2 on Windows
+
+With OpenCode 2 installed through npm, `opencode` on Windows is a `.cmd` shim. Node refuses to pass arguments containing JSON quotes to a batch file (CVE-2024-27980 hardening), so `credential.create` failed with "contains a cmd.exe special character", and the error message echoed the request body including the API key. Setup now resolves the real `opencode.exe` from PATH, looking through the npm shim, and synchronous spawn errors no longer leak argv. Replacing an existing credential also failed: `credential.remove` takes `credentialID` as a path parameter (`--param`), not as a request body.
+
+A failed run left OpenCode 2 with whatever key was imported from `auth.json` earlier, so the provider showed up without models (discovery answered 401). Rerun setup after updating.
+
+### Fixed: setup ignored OpenCode Desktop 2 when no `opencode` CLI was on PATH
+
+OpenCode Desktop 2 on Windows ships its own CLI under `%APPDATA%\ai.opencode.desktop\cli\<version>-<arch>\opencode-cli.exe` and does not add it to PATH. Without a separately installed CLI, setup found no binary and wrote the key to `auth.json`, which OpenCode 2 imports only on its first start, so an existing installation never saw the key. Setup now falls back to the newest bundled Desktop CLI.
+
+### Added: OpenCode 2 flags a rejected API key on the connection
+
+When the proxy answers discovery with 401 or 403, the plugin marks the profile's connection as `needs_auth` with a message naming the proxy, so OpenCode shows that the key needs replacing instead of an empty model list. The mark is cleared once discovery succeeds again.
+
 ## 0.6.1
 
 ### Fixed: the baseline's blanket allow overrode a user's own specific rules
