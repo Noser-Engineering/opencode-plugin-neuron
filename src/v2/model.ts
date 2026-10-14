@@ -39,16 +39,19 @@ export function toModelInfo(model: LiteLLMModel, providerID: string): V2ModelInf
       : []
 
   const isResponsesAPI = model.mode?.toLowerCase() === "responses"
+  // Recent dates and separate families keep all three aliases visible in Desktop 2.
+  const isDefaultAlias = model.id === "coding" || model.id === "thinking" || model.id === "fast"
 
   return {
     id: model.id,
     modelID: model.id,
     providerID,
     name: model.id,
+    ...(isDefaultAlias ? { family: model.id } : {}),
     ...(isResponsesAPI ? { package: RESPONSES_API_PACKAGE_V2 } : {}),
     capabilities: { tools: model.supports_function_calling ?? true, input, output: ["text"] },
     variants: [],
-    time: { released: 0 },
+    time: { released: isDefaultAlias ? Date.now() : 0 },
     cost,
     status: "active",
     enabled: true,

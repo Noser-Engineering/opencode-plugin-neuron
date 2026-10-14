@@ -231,6 +231,7 @@ The layer depends on the `config` hook running before OpenCode resolves provider
 
 ## Behavior
 
+- On OpenCode Desktop 2, `coding`, `thinking` and `fast` receive the current timestamp and separate families to appear by default. This is a visibility workaround, not their actual release date. Explicit user visibility choices still take precedence; other models may need enabling under **Manage models**.
 - Discovery prefers `GET /v1/model_group/info`, which reports one entry per alias with mode, context limits, costs and capability flags. It falls back to `GET /v1/models` for older LiteLLM versions and restricted keys.
 - Costs are converted from LiteLLM's per-token prices to the per-million unit OpenCode expects. Cache-read and cache-write prices come from `GET /v1/model/info` (`cache_read_input_token_cost`, `cache_creation_input_token_cost`), since `/model_group/info` reports only input and output. OpenCode prices cached tokens at zero unless told otherwise, and in an agentic session those are nearly all the prompt tokens, so without them its cost display sits 10–50× below what the proxy bills. If that lookup fails, cached tokens are priced like input: too high beats invisible.
 - Wildcard entries are LiteLLM access rules rather than callable models and are dropped, as is anything whose mode is not `chat` or `responses`. An entry without a mode is kept.
@@ -255,6 +256,10 @@ OpenCode only reads plugin configuration during startup. Restart it whenever pro
 npm install
 npm run check
 ```
+
+### Testing locally in OpenCode Desktop 2
+
+Run `npm run build`, then set the Neuron entry's `package` to the absolute repository directory, for example `"C:/workspaces/opencode-plugin-neuron"`. Use the same source globally and in projects to avoid duplicate plugin IDs; keep profile options unchanged. Rebuild after source changes and restore the npm package source when finished.
 
 To inspect the package that will be distributed:
 

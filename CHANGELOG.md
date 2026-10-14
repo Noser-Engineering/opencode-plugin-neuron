@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed: loading the plugin from a local directory
+
+Added `server.js` at the repository root so OpenCode can load the built V2 adapter from a local directory.
+
+### Fixed: recommended aliases were hidden in OpenCode Desktop 2
+
+The exact aliases `coding`, `thinking` and `fast` receive the current timestamp and separate families to appear by default in Desktop 2.0.29. This is a visibility workaround, not their actual release date. Explicit user visibility choices, other models and V1 are unchanged.
+
 ### Fixed: setup could not store the API key for OpenCode 2 on Windows
 
 With OpenCode 2 installed through npm, `opencode` on Windows is a `.cmd` shim. Node refuses to pass arguments containing JSON quotes to a batch file (CVE-2024-27980 hardening), so `credential.create` failed with "contains a cmd.exe special character", and the error message echoed the request body including the API key. Setup now resolves the real `opencode.exe` from PATH, looking through the npm shim, and synchronous spawn errors no longer leak argv. Replacing an existing credential also failed: `credential.remove` takes `credentialID` as a path parameter (`--param`), not as a request body.

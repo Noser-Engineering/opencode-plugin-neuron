@@ -25,6 +25,7 @@ export interface V2ModelInfo {
   modelID: string
   providerID: string
   name: string
+  family?: string
   /** Overrides the provider's adapter for this one model. */
   package?: string
   capabilities: { tools: boolean; input: string[]; output: string[] }
