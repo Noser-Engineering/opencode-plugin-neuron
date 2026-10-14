@@ -74,6 +74,7 @@ run_debug_agent() {
     env -u OPENCODE_CONFIG \
       XDG_CONFIG_HOME="$dir/xdg-config" \
       XDG_DATA_HOME="$dir/xdg-data" \
+      ANTHROPIC_API_KEY=sk-dummy-not-a-real-key \
       opencode debug agent build 2>/dev/null
   )
 }
