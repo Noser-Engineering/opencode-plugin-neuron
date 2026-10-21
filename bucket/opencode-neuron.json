@@ -1,16 +1,16 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "OpenCode plugin setup CLI for configurable LiteLLM proxies",
   "homepage": "https://github.com/Noser-Engineering/opencode-plugin-neuron",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/Noser-Engineering/opencode-plugin-neuron/releases/download/v0.7.0/opencode-neuron-windows-x64.exe#/opencode-neuron.exe",
-      "hash": "9f0c25146b7cbf3d4c8639f4e405293901b8880c911f6bbccac8e14b061c183e"
+      "url": "https://github.com/Noser-Engineering/opencode-plugin-neuron/releases/download/v0.8.0/opencode-neuron-windows-x64.exe#/opencode-neuron.exe",
+      "hash": "b7700bb9c3e58e9444f6ac63c91dd871c1022cdf2f9f1dbfdca84094b4a61648"
     },
     "arm64": {
-      "url": "https://github.com/Noser-Engineering/opencode-plugin-neuron/releases/download/v0.7.0/opencode-neuron-windows-arm64.exe#/opencode-neuron.exe",
-      "hash": "0e85b7f29f1ad675ecfc3de0723745313c47a080b3ad4e774d22095e617d1c68"
+      "url": "https://github.com/Noser-Engineering/opencode-plugin-neuron/releases/download/v0.8.0/opencode-neuron-windows-arm64.exe#/opencode-neuron.exe",
+      "hash": "b53f3739ef001006a95a608ef8451182e3507629c8e8a6bf98923480a268e939"
     }
   },
   "bin": "opencode-neuron.exe"
