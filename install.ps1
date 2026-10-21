@@ -31,4 +31,9 @@ if (-not ($userPath -split ";" -contains $installDir)) {
     Write-Host "==> added $installDir to your User PATH — restart your terminal for it to take effect"
 }
 
-Write-Host "==> run: opencode-neuron setup"
+# The new PATH entry only reaches new terminals, so run setup by its full path
+Write-Host "==> running: opencode-neuron setup"
+& $targetPath setup
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "setup failed — rerun it with: & '$targetPath' setup"
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed: the Windows installer runs setup itself
+
+`install.ps1` only downloaded the binary and told the user to run `opencode-neuron setup`, but the PATH entry it adds reaches only new terminals, so the command was not found in the same PowerShell window without knowing the install path. The installer now starts setup by its full path right after the download.
+
 ## 0.8.0
 
 ### Added: release date and family from LiteLLM for OpenCode Desktop 2
