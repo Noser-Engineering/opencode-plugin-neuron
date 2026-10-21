@@ -147,7 +147,7 @@ function catalog(id: string, activation: V2ProviderInfo["activation"]): Provider
 }
 
 const PROFILE = { id: "work", name: "Work", baseURL: "https://proxy.example/v1" }
-const noInfo = async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() })
+const noInfo = async () => ({ deprecated: new Set<string>(), cacheCosts: new Map(), display: new Map() })
 
 function deps(overrides: Partial<V2Dependencies> = {}): V2Dependencies & { log: ReturnType<typeof vi.fn> } {
   return {
@@ -351,7 +351,7 @@ describe("setupNeuron", () => {
     const ctx = new FakeContext({ profiles: [PROFILE] }, {})
     const fetchInfo = vi.fn(async (_url: string, key: string | undefined) => {
       if (!key) throw new Error("401")
-      return { deprecated: new Set(["old"]), cacheCosts: new Map() }
+      return { deprecated: new Set(["old"]), cacheCosts: new Map(), display: new Map() }
     })
 
     const cleanup = await setupNeuron(ctx, deps({ discoverRawModels: async () => [{ id: "old" }, { id: "new" }], fetchModelInfo: fetchInfo }))

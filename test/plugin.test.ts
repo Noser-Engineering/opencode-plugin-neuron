@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createDiscoveryCache, enhanceConfig } from "../src/plugin.js"
 import type { OpenCodeConfig } from "../src/types.js"
 
-const noDeprecations = async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() })
+const noDeprecations = async () => ({ deprecated: new Set<string>(), cacheCosts: new Map(), display: new Map() })
 
 describe("enhanceConfig", () => {
   it("creates isolated providers for profiles sharing one proxy", async () => {
@@ -118,7 +118,7 @@ describe("enhanceConfig", () => {
       { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] },
       {
         discoverRawModels,
-        fetchModelInfo: async () => ({ deprecated: new Set(["gpt-4-old"]), cacheCosts: new Map() }),
+        fetchModelInfo: async () => ({ deprecated: new Set(["gpt-4-old"]), cacheCosts: new Map(), display: new Map() }),
         readCredentials: async () => ({}),
         log: async () => undefined,
       },
@@ -327,7 +327,7 @@ describe("discovery cache", () => {
   })
 
   it("fetches deprecated names once per baseURL, not once per profile", async () => {
-    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() }))
+    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map(), display: new Map() }))
     const cache = createDiscoveryCache()
     const options = {
       profiles: [
@@ -349,7 +349,7 @@ describe("discovery cache", () => {
   })
 
   it("reuses the cached deprecation lookup across repeated hook calls", async () => {
-    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map() }))
+    const fetchModelInfo = vi.fn(async () => ({ deprecated: new Set<string>(), cacheCosts: new Map(), display: new Map() }))
     const cache = createDiscoveryCache()
     const options = { profiles: [{ id: "neuron", name: "Neuron", baseURL: "https://proxy.example/v1" }] }
     const dependencies = {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added: release date and family from LiteLLM for OpenCode Desktop 2
+
+OpenCode Desktop 2 hid every Neuron model, because the plugin reported release date 0 and Desktop reads that as 1970. The plugin now takes `model_info.released` (ISO date) and `model_info.family` from `GET /v1/model/info`, so the proxy admin decides which models Desktop shows. Models without them behave as before.
+
 ## 0.7.0
 
 ### Fixed: secret files at the repository root were readable and editable on OpenCode 1

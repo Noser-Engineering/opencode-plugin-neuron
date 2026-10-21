@@ -36,6 +36,13 @@ describe("toModelInfo", () => {
     })
   })
 
+  it("passes the proxy's release date and family through", () => {
+    const info = toModelInfo({ id: "coding", released: Date.UTC(2026, 9, 1), family: "coding" }, "p")
+
+    expect(info.time.released).toBe(Date.UTC(2026, 9, 1))
+    expect(info.family).toBe("coding")
+  })
+
   it("prices cache tokens like input tokens when the proxy does not say otherwise", () => {
     const info = toModelInfo({ id: "m", input_cost_per_million: 2, output_cost_per_million: 8 }, "p")
     expect(info.cost).toEqual([{ input: 2, output: 8, cache: { read: 2, write: 2 } }])

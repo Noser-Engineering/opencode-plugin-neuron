@@ -1,5 +1,5 @@
 import { RESPONSES_API_NPM } from "./constants.js"
-import type { CacheCosts, LiteLLMModel, ModelConfig, ModelInfo } from "./types.js"
+import type { CacheCosts, LiteLLMModel, ModelConfig, ModelDisplay, ModelInfo } from "./types.js"
 
 interface DiscoveryOptions {
   timeoutMs: number
@@ -152,6 +152,9 @@ function parseModelGroup(value: unknown): LiteLLMModel | undefined {
  *   shows roughly the output cost alone — 10–50× below what the proxy bills.
  *   Where an alias has several deployments the most expensive one wins,
  *   matching how `/model_group/info` picks its input price.
+ * - The custom fields `model_info.released` (an ISO date) and
+ *   `model_info.family`. OpenCode Desktop 2 hides models it considers old,
+ *   and a model without a release date counts as released in 1970.
  *
  * Throws rather than failing open itself: a key that cannot reach this
  * endpoint, or a proxy old enough not to have it, should still get its
@@ -165,6 +168,7 @@ export async function fetchModelInfo(
 ): Promise<ModelInfo> {
   const deprecated = new Set<string>()
   const cacheCosts = new Map<string, CacheCosts>()
+  const display = new Map<string, ModelDisplay>()
   const data = await fetchModelList(`${baseURL}/model/info`, apiKey, options)
   for (const value of data) {
     const item = asRecord(value)
@@ -172,6 +176,7 @@ export async function fetchModelInfo(
     if (!name) continue
     const info = asRecord(item?.model_info)
     if (info?.deprecated === true) deprecated.add(name)
+    mergeDisplay(display, name, info)
 
     const read = costPerMillion(info?.cache_read_input_token_cost)
     const write = costPerMillion(info?.cache_creation_input_token_cost)
@@ -184,7 +189,23 @@ export async function fetchModelInfo(
     if (mergedWrite !== undefined) merged.write = mergedWrite
     cacheCosts.set(name, merged)
   }
-  return { deprecated, cacheCosts }
+  return { deprecated, cacheCosts, display }
+}
+
+/**
+ * Where an alias has several deployments the latest release date and the
+ * first family win. A date that does not parse is ignored rather than
+ * becoming NaN.
+ */
+function mergeDisplay(display: Map<string, ModelDisplay>, name: string, info: Record<string, unknown> | undefined): void {
+  const released = typeof info?.released === "string" ? Date.parse(info.released) : Number.NaN
+  const family = typeof info?.family === "string" && info.family.trim() ? info.family.trim() : undefined
+  if (Number.isNaN(released) && family === undefined) return
+  const current = display.get(name) ?? {}
+  const merged: ModelDisplay = { ...current }
+  if (!Number.isNaN(released)) merged.released = Math.max(current.released ?? released, released)
+  if (current.family === undefined && family !== undefined) merged.family = family
+  display.set(name, merged)
 }
 
 function maxDefined(a: number | undefined, b: number | undefined): number | undefined {
@@ -194,23 +215,26 @@ function maxDefined(a: number | undefined, b: number | undefined): number | unde
 }
 
 export function emptyModelInfo(): ModelInfo {
-  return { deprecated: new Set(), cacheCosts: new Map() }
+  return { deprecated: new Set(), cacheCosts: new Map(), display: new Map() }
 }
 
 /**
- * Drops any model whose alias is deprecated and attaches cache prices to the
- * rest. No-op on an empty `ModelInfo`.
+ * Drops any model whose alias is deprecated and attaches cache prices,
+ * release date and family to the rest. No-op on an empty `ModelInfo`.
  */
 export function applyModelInfo(models: LiteLLMModel[], info: ModelInfo): LiteLLMModel[] {
   return models
     .filter((model) => !info.deprecated.has(model.id))
     .map((model) => {
       const costs = info.cacheCosts.get(model.id)
-      if (!costs) return model
+      const display = info.display.get(model.id)
+      if (!costs && !display) return model
       return {
         ...model,
-        ...(costs.read !== undefined ? { cache_read_cost_per_million: costs.read } : {}),
-        ...(costs.write !== undefined ? { cache_write_cost_per_million: costs.write } : {}),
+        ...(costs?.read !== undefined ? { cache_read_cost_per_million: costs.read } : {}),
+        ...(costs?.write !== undefined ? { cache_write_cost_per_million: costs.write } : {}),
+        ...(display?.released !== undefined ? { released: display.released } : {}),
+        ...(display?.family !== undefined ? { family: display.family } : {}),
       }
     })
 }

@@ -35,6 +35,9 @@ export interface LiteLLMModel {
   /** From /v1/model/info only; see `fetchModelInfo`. */
   cache_read_cost_per_million?: number
   cache_write_cost_per_million?: number
+  /** From /v1/model/info only, in epoch milliseconds; see `fetchModelInfo`. */
+  released?: number
+  family?: string
 }
 
 /**
@@ -44,6 +47,14 @@ export interface LiteLLMModel {
 export interface ModelInfo {
   deprecated: Set<string>
   cacheCosts: Map<string, CacheCosts>
+  display: Map<string, ModelDisplay>
+}
+
+/** What the proxy admin wants OpenCode Desktop to show; both are custom `model_info` fields. */
+export interface ModelDisplay {
+  /** Epoch milliseconds. */
+  released?: number
+  family?: string
 }
 
 /** Per million tokens. Either side may be missing when LiteLLM prices only one. */

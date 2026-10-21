@@ -354,6 +354,35 @@ describe("discoverModels deprecated filtering", () => {
   })
 })
 
+describe("discoverModels display metadata from /v1/model/info", () => {
+  it("takes the latest release date and the first family across deployments", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "coding" }] }),
+      modelInfo: () =>
+        jsonResponse({
+          data: [
+            { model_name: "coding", model_info: { released: "2026-09-01", family: "coding" } },
+            { model_name: "coding", model_info: { released: "2026-10-01", family: "other" } },
+          ],
+        }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([
+      { id: "coding", released: Date.UTC(2026, 9, 1), family: "coding" },
+    ])
+  })
+
+  it("ignores a release date that does not parse and a blank family", async () => {
+    const fetchMock = routedFetch({
+      modelGroup: () => jsonResponse({ data: [{ model_group: "coding" }] }),
+      modelInfo: () =>
+        jsonResponse({ data: [{ model_name: "coding", model_info: { released: "soon", family: " " } }] }),
+    })
+
+    await expect(discover(fetchMock)).resolves.toEqual([{ id: "coding" }])
+  })
+})
+
 describe("toModelConfig", () => {
   it("maps known capabilities without changing the wire model id", () => {
     expect(
