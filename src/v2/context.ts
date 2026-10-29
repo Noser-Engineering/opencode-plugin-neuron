@@ -73,6 +73,10 @@ export interface IntegrationEditor {
   }
 }
 
+export interface SkillDraft {
+  source(source: { type: "url"; url: string }): void
+}
+
 export interface Registration {
   dispose(): Promise<void>
 }
@@ -107,6 +111,7 @@ export interface NeuronContext {
   readonly location: { readonly directory: string }
   readonly provider: { readonly transform: Transform<ProviderEditor> }
   readonly agent: { readonly transform: Transform<AgentEditor> }
+  readonly skill: { readonly transform: Transform<SkillDraft> }
   readonly integration: {
     readonly transform: Transform<IntegrationEditor>
     readonly connection: {

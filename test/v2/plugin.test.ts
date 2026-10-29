@@ -10,6 +10,7 @@ import type {
   ProviderEditor,
   ProviderRecord,
   Registration,
+  SkillDraft,
   V2ModelInfo,
   V2ProviderInfo,
 } from "../../src/v2/context.js"
@@ -33,6 +34,7 @@ class FakeContext implements NeuronContext {
   private eventWaiters: Array<() => void> = []
   private eventsClosed = false
   readonly integrationMethods: Array<{ integrationID: string; label?: string }> = []
+  readonly skillSources: Array<{ type: "url"; url: string }> = []
   readonly agents: AgentRecord[] = [{ id: "build", permissions: [{ action: "*", resource: "*", effect: "allow" }] }]
   disposals = 0
 
@@ -64,6 +66,13 @@ class FakeContext implements NeuronContext {
   readonly agent = {
     transform: async (run: (e: AgentEditor) => void): Promise<Registration> => {
       this.agentCallbacks.push(run)
+      return { dispose: async () => undefined }
+    },
+  }
+
+  readonly skill = {
+    transform: async (run: (d: SkillDraft) => void): Promise<Registration> => {
+      run({ source: (source) => void this.skillSources.push(source) })
       return { dispose: async () => undefined }
     },
   }
@@ -164,6 +173,18 @@ async function flush() {
 }
 
 describe("setupNeuron", () => {
+  it("registers the NAIT skill index by default, even without profiles", async () => {
+    const ctx = new FakeContext({}, {})
+    await setupNeuron(ctx, deps())
+    expect(ctx.skillSources).toEqual([{ type: "url", url: "https://ai-toolbox.noser.com/skills/" }])
+  })
+
+  it("registers no skill source when skills is empty", async () => {
+    const ctx = new FakeContext({ profiles: [PROFILE], skills: [] }, {})
+    await setupNeuron(ctx, deps())
+    expect(ctx.skillSources).toEqual([])
+  })
+
   it("registers a provider with its discovered models and the stored key's connection", async () => {
     const ctx = new FakeContext({ profiles: [PROFILE] }, { work: { type: "key", key: "sk-1", metadata: { baseURL: PROFILE.baseURL } } })
     ctx.integration.connection.resolve = async () => ({ type: "key", key: "sk-1", metadata: { baseURL: PROFILE.baseURL } })

@@ -48,3 +48,11 @@ describe("profile validation", () => {
     expect(slugifyProviderID("constructor")).toBe("litellm-constructor")
   })
 })
+
+describe("skill sources", () => {
+  it("adds the trailing slash OpenCode resolves index.json against and drops non-https entries", () => {
+    const parsed = parsePluginOptions({ profiles: [], skills: ["https://skills.example/team", "http://skills.example/"] })
+    expect(parsed.skills).toEqual(["https://skills.example/team/"])
+    expect(parsed.errors).toEqual(["skills[1]: must use https"])
+  })
+})

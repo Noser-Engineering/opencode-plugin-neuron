@@ -74,6 +74,7 @@ What changes on OpenCode 2:
 - When the proxy rejects the stored key (HTTP 401 or 403), the profile's connection is marked as needing a new key, and the provider stays without models until a valid key is stored. The mark clears on the next successful discovery.
 - A key stored for a profile whose URL changed is ignored, with a warning in the log, exactly as before.
 - The compliance layer removes OpenCode Zen (`opencode`, `opencode-go`) and any `denyProviders` entry unless the provider is declared under `providers` in `opencode.json`, and appends the permission baseline to every agent (`bash` is `shell` in v2). A deny of the baseline overrides a conflicting rule of yours for the same resource; an ask or allow yields to it. See [Permission baseline](#permission-baseline).
+- The Noser skills (e.g. `noser-praesentation`) are preinstalled: the plugin registers `https://ai-toolbox.noser.com/skills/` as a skill source, and OpenCode fetches `index.json` and the listed files from there on startup and again whenever a skill's `version` changes. `"skills": ["https://…/"]` in the plugin options replaces the list, `"skills": []` turns it off. OpenCode 1.x does not get the skills.
 - A v2 plugin cannot set `share` or `update`. Setup writes `"share": "disabled"` and `"update": "notify"` into the config it edits, only when they are absent. Removing them is your call, and the plugin will not put them back.
 
 ## Skipping prompts

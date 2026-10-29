@@ -218,7 +218,8 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
 
 /**
  * The v2 plugin body. Compliance first, so a broken profile configuration
- * costs the user their models but never their protection; then the profiles;
+ * costs the user their models but never their protection; then the skill
+ * sources, which do not depend on a profile; then the profiles;
  * then a subscription that re-runs discovery whenever a credential changes,
  * so `/connect` takes effect without a restart.
  */
@@ -232,6 +233,15 @@ export async function setupNeuron(ctx: NeuronContext, dependencies: V2Dependenci
     fixed.push(...(await registerCompliance(ctx, options, dependencies)))
   } catch (error) {
     dependencies.log("error", "Neuron compliance layer could not be applied", { error: describe(error) })
+  }
+
+  try {
+    if (options.skills.length) {
+      const sources = options.skills
+      fixed.push(await ctx.skill.transform((draft) => sources.forEach((url) => draft.source({ type: "url", url }))))
+    }
+  } catch (error) {
+    dependencies.log("warn", "Could not register the Noser skill sources", { error: describe(error) })
   }
 
   if (!options.profiles.length) {

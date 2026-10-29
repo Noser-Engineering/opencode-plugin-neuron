@@ -9,6 +9,7 @@ export interface NeuronPluginOptions {
   timeoutMs?: number
   enforce?: boolean
   denyProviders?: string[]
+  skills?: string[]
 }
 
 /**
@@ -126,5 +127,6 @@ export interface ParsedPluginOptions {
   timeoutMs: number
   enforce: boolean
   denyProviders: string[]
+  skills: string[]
   errors: string[]
 }

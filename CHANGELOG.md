@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added: Noser skills preinstalled on OpenCode 2
+
+The plugin registers NAIT's skill index (`https://ai-toolbox.noser.com/skills/`) with OpenCode 2, so skills such as `noser-praesentation` are available without copying anything into `~/.config/opencode/skills`. NAIT publishes updates; OpenCode refetches a skill when its `version` changes. The new `skills` option replaces the list, `[]` disables it.
+
 ### Changed: the Windows installer runs setup itself
 
 `install.ps1` only downloaded the binary and told the user to run `opencode-neuron setup`, but the PATH entry it adds reaches only new terminals, so the command was not found in the same PowerShell window without knowing the install path. The installer now starts setup by its full path right after the download.
