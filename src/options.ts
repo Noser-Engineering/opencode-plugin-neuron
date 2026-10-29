@@ -1,4 +1,4 @@
-import { DEFAULT_SKILL_SOURCES, DEFAULT_TIMEOUT_MS } from "./constants.js"
+import { DEFAULT_TIMEOUT_MS } from "./constants.js"
 import type { NeuronPluginOptions, NeuronProfile, ParsedPluginOptions } from "./types.js"
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
@@ -24,18 +24,6 @@ export function normalizeBaseURL(input: string): string {
   if (!pathname.endsWith("/v1")) pathname += "/v1"
   url.pathname = pathname
   return url.toString().replace(/\/$/, "")
-}
-
-/** OpenCode resolves `index.json` and the skill files relative to the URL, so it must end in a slash. */
-function normalizeSkillSource(input: unknown): string {
-  if (typeof input !== "string") throw new Error("must be a URL")
-  const url = new URL(input)
-  if (url.protocol !== "https:") throw new Error("must use https")
-  if (url.username || url.password) throw new Error("must not contain credentials")
-  url.search = ""
-  url.hash = ""
-  if (!url.pathname.endsWith("/")) url.pathname += "/"
-  return url.toString()
 }
 
 export function validateProfile(input: unknown, index = 0): NeuronProfile {
@@ -126,22 +114,7 @@ export function parsePluginOptions(input?: Record<string, unknown>): ParsedPlugi
     }
   }
 
-  let skills = DEFAULT_SKILL_SOURCES
-  if (value.skills !== undefined) {
-    skills = []
-    if (!Array.isArray(value.skills)) errors.push("skills must be an array")
-    else {
-      for (const [index, entry] of value.skills.entries()) {
-        try {
-          skills.push(normalizeSkillSource(entry))
-        } catch (error) {
-          errors.push(`skills[${index}]: ${error instanceof Error ? error.message : String(error)}`)
-        }
-      }
-    }
-  }
-
-  return { profiles, timeoutMs, enforce, denyProviders, skills, errors }
+  return { profiles, timeoutMs, enforce, denyProviders, errors }
 }
 
 export function slugifyProviderID(name: string): string {

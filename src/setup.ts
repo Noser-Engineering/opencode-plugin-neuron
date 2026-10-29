@@ -11,7 +11,7 @@ import {
   type FormattingOptions,
   type ParseError,
 } from "jsonc-parser"
-import { CONFIG_SCHEMA, PACKAGE_NAME, PACKAGE_VERSION } from "./constants.js"
+import { CONFIG_SCHEMA, NOSER_SKILL_SOURCES, PACKAGE_NAME, PACKAGE_VERSION } from "./constants.js"
 import { parsePluginOptions } from "./options.js"
 import type { NeuronProfile } from "./types.js"
 
@@ -300,6 +300,24 @@ function removeTopLevelProperty(text: string, key: string, formattingOptions: Fo
   return applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
 }
 
+/**
+ * `skills` with the Noser skill indexes added, or undefined when nothing
+ * changes. OpenCode 2.2 writes a list of paths and URLs; 2.0's
+ * `{ paths, urls }` is still accepted by both, so an existing object keeps
+ * its shape. Anything else is the user's and stays untouched.
+ */
+function withNoserSkillSources(skills: unknown): unknown {
+  const missing = (present: unknown[]) => NOSER_SKILL_SOURCES.filter((url) => !present.includes(url))
+  if (skills === undefined) return [...NOSER_SKILL_SOURCES]
+  if (Array.isArray(skills)) return missing(skills).length ? [...skills, ...missing(skills)] : undefined
+  if (skills && typeof skills === "object") {
+    const urls = (skills as { urls?: unknown }).urls ?? []
+    if (!Array.isArray(urls) || !missing(urls).length) return undefined
+    return { ...skills, urls: [...urls, ...missing(urls)] }
+  }
+  return undefined
+}
+
 function updateConfigTextV2(text: string, profiles: NeuronProfile[], filePath: string): string {
   const config = parseConfigText(text, filePath)
   const existingEntry = readNeuronConfigEntry(config)
@@ -335,6 +353,8 @@ function updateConfigTextV2(text: string, profiles: NeuronProfile[], filePath: s
   // the v1 guarantees. Only when absent: an explicit choice stays an explicit choice.
   if (config.share === undefined) edit(["share"], "disabled")
   if (config.update === undefined) edit(["update"], "notify")
+  const skills = withNoserSkillSources(config.skills)
+  if (skills !== undefined) edit(["skills"], skills)
   const result = `${updated.trimEnd()}\n`
   // The text is written to the user's config as is; never let an invalid edit out.
   try {

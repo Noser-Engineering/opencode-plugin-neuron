@@ -20,7 +20,7 @@ import { PLUGIN_ID } from "./constants.js"
 import { discoverRawModels, fetchModelInfo } from "./discovery.js"
 import { createDiscoveryCache, NeuronPlugin, type NeuronPluginFunction } from "./plugin.js"
 import type { NeuronContext } from "./v2/context.js"
-import { readDeclaredProviderIDs } from "./v2/declared.js"
+import { readDeclaredProviderIDs, readSkillSources } from "./v2/declared.js"
 import { consoleLogger, setupNeuron } from "./v2/plugin.js"
 
 const plugin: Plugin.Plugin & { server: NeuronPluginFunction } = {
@@ -34,6 +34,7 @@ const plugin: Plugin.Plugin & { server: NeuronPluginFunction } = {
       discoverRawModels,
       fetchModelInfo,
       readDeclaredProviders: (directory) => readDeclaredProviderIDs(directory, process.env, homedir()),
+      readSkillSources: (directory) => readSkillSources(directory, process.env, homedir()),
       log: consoleLogger(),
       cache: createDiscoveryCache(),
     })

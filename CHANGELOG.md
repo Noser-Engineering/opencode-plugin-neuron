@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+### Fixed: 0.9.0 disabled the whole plugin on OpenCode 2.2
+
+0.9.0 registered the NAIT skill index through the plugin's `skill.transform`. OpenCode 2.2 changed that API (`draft.source` is gone), the callback threw, and OpenCode disables a plugin whose transform throws, so models and the compliance layer were gone too. 0.9.0 was never published to npm. The skill index now goes into the config instead: setup adds `https://ai-toolbox.noser.com/skills/` to `skills`, OpenCode 2.0 and 2.2 both accept it, and the plugin warns while it is missing. The `skills` plugin option is gone. Every transform callback now catches its own errors, so a future API change costs one part, never the protection.
+
 ## 0.9.0
 
 ### Added: Noser skills preinstalled on OpenCode 2

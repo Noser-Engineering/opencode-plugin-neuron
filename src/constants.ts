@@ -8,11 +8,13 @@ export const PACKAGE_NAME = "@noser-engineering/opencode-plugin-neuron"
 export const PACKAGE_VERSION = "0.9.0"
 export const DEFAULT_TIMEOUT_MS = 5_000
 /**
- * Skill indexes OpenCode 2 pulls on startup (`<url>/index.json`, then each
- * listed file). NAIT publishes the Noser skills there; `skills: []` in the
- * plugin options opts out.
+ * Skill indexes setup adds to the OpenCode 2 config's `skills`. OpenCode
+ * itself pulls `<url>/index.json` and the listed files, caches them and
+ * refetches a skill when its `version` changes. NAIT publishes the Noser
+ * skills there. Deliberately config, not the plugin's `skill.transform`:
+ * that API changed between 2.0 and 2.2 (0.9.0 broke on it).
  */
-export const DEFAULT_SKILL_SOURCES = ["https://ai-toolbox.noser.com/skills/"]
+export const NOSER_SKILL_SOURCES = ["https://ai-toolbox.noser.com/skills/"]
 export const PROVIDER_NPM = "@ai-sdk/openai-compatible"
 /**
  * OpenCode's adapter for `/v1/responses`, as opposed to `PROVIDER_NPM`'s

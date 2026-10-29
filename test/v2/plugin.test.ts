@@ -10,7 +10,6 @@ import type {
   ProviderEditor,
   ProviderRecord,
   Registration,
-  SkillDraft,
   V2ModelInfo,
   V2ProviderInfo,
 } from "../../src/v2/context.js"
@@ -34,9 +33,9 @@ class FakeContext implements NeuronContext {
   private eventWaiters: Array<() => void> = []
   private eventsClosed = false
   readonly integrationMethods: Array<{ integrationID: string; label?: string }> = []
-  readonly skillSources: Array<{ type: "url"; url: string }> = []
   readonly agents: AgentRecord[] = [{ id: "build", permissions: [{ action: "*", resource: "*", effect: "allow" }] }]
   disposals = 0
+  failAgentUpdates = false
 
   constructor(
     options: Record<string, unknown>,
@@ -66,13 +65,6 @@ class FakeContext implements NeuronContext {
   readonly agent = {
     transform: async (run: (e: AgentEditor) => void): Promise<Registration> => {
       this.agentCallbacks.push(run)
-      return { dispose: async () => undefined }
-    },
-  }
-
-  readonly skill = {
-    transform: async (run: (d: SkillDraft) => void): Promise<Registration> => {
-      run({ source: (source) => void this.skillSources.push(source) })
       return { dispose: async () => undefined }
     },
   }
@@ -136,6 +128,7 @@ class FakeContext implements NeuronContext {
     const agentEditor: AgentEditor = {
       list: () => agents,
       update: (id, update) => {
+        if (this.failAgentUpdates) throw new Error("agent registry rejected the update")
         const agent = agents.find((a) => a.id === id)
         if (agent) update(agent)
       },
@@ -163,6 +156,7 @@ function deps(overrides: Partial<V2Dependencies> = {}): V2Dependencies & { log: 
     discoverRawModels: async () => [{ id: "model-a" }],
     fetchModelInfo: noInfo,
     readDeclaredProviders: async () => new Set<string>(),
+    readSkillSources: async () => new Set(["https://ai-toolbox.noser.com/skills/"]),
     log: vi.fn(),
     ...overrides,
   } as V2Dependencies & { log: ReturnType<typeof vi.fn> }
@@ -173,16 +167,16 @@ async function flush() {
 }
 
 describe("setupNeuron", () => {
-  it("registers the NAIT skill index by default, even without profiles", async () => {
-    const ctx = new FakeContext({}, {})
-    await setupNeuron(ctx, deps())
-    expect(ctx.skillSources).toEqual([{ type: "url", url: "https://ai-toolbox.noser.com/skills/" }])
-  })
+  it("keeps its other transforms when one callback throws, instead of letting OpenCode disable the plugin", async () => {
+    const ctx = new FakeContext({ profiles: [PROFILE] }, {})
+    ctx.failAgentUpdates = true
+    const dependencies = deps()
 
-  it("registers no skill source when skills is empty", async () => {
-    const ctx = new FakeContext({ profiles: [PROFILE], skills: [] }, {})
-    await setupNeuron(ctx, deps())
-    expect(ctx.skillSources).toEqual([])
+    await setupNeuron(ctx, dependencies)
+    const { providers } = ctx.rebuild()
+
+    expect(providers.has("work")).toBe(true)
+    expect(dependencies.log).toHaveBeenCalledWith("error", "Permission baseline failed", expect.anything())
   })
 
   it("registers a provider with its discovered models and the stored key's connection", async () => {

@@ -1,5 +1,5 @@
 import { DEFAULT_PERMISSION_POLICY } from "../compliance.js"
-import { PROVIDER_PACKAGE_V2 } from "../constants.js"
+import { NOSER_SKILL_SOURCES, PROVIDER_PACKAGE_V2 } from "../constants.js"
 import { applyModelInfo, emptyModelInfo, isAuthRejection } from "../discovery.js"
 import { parsePluginOptions } from "../options.js"
 import { createDiscoveryCache, type DiscoveryCache } from "../plugin.js"
@@ -19,6 +19,8 @@ export interface V2Dependencies {
   fetchModelInfo: (baseURL: string, apiKey: string | undefined, options: { timeoutMs: number }) => Promise<ModelInfo>
   /** Provider ids declared in the config files OpenCode reads for `directory`. */
   readDeclaredProviders: (directory: string) => Promise<ReadonlySet<string>>
+  /** Skill paths and URLs in the config files OpenCode reads for `directory`. */
+  readSkillSources: (directory: string) => Promise<ReadonlySet<string>>
   log: (level: V2LogLevel, message: string, extra?: Record<string, unknown>) => void
   cache?: DiscoveryCache
 }
@@ -32,6 +34,26 @@ export function consoleLogger(): V2Dependencies["log"] {
     if (level === "error") console.error(line)
     else if (level === "warn") console.warn(line)
     else console.log(line)
+  }
+}
+
+/**
+ * OpenCode 2 disables the whole plugin, compliance layer included, when a
+ * transform callback throws, and it runs the callbacks on every registry
+ * rebuild, long after `setup` returned. A failure is contained to the one
+ * callback so it never takes the protection down with it.
+ */
+function contained<Editor>(
+  label: string,
+  run: (editor: Editor) => void,
+  log: V2Dependencies["log"],
+): (editor: Editor) => void {
+  return (editor) => {
+    try {
+      run(editor)
+    } catch (error) {
+      log("error", `${label} failed`, { error: describe(error) })
+    }
   }
 }
 
@@ -206,8 +228,12 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
   }
   const rules = [...toPermissionRules(DEFAULT_PERMISSION_POLICY), ...toPermissionRules(V2_EXTRA_PERMISSIONS)]
   const registrations = [
-    await ctx.provider.transform((editor) => applyDenyList(editor, policy, declared, ownProfiles)),
-    await ctx.agent.transform((editor) => applyPermissionRules(editor, rules)),
+    await ctx.provider.transform(
+      contained("Provider deny list", (editor) => applyDenyList(editor, policy, declared, ownProfiles), dependencies.log),
+    ),
+    await ctx.agent.transform(
+      contained("Permission baseline", (editor) => applyPermissionRules(editor, rules), dependencies.log),
+    ),
   ]
   dependencies.log(
     "warn",
@@ -216,10 +242,19 @@ async function registerCompliance(ctx: NeuronContext, options: ParsedPluginOptio
   return registrations
 }
 
+async function hintMissingSkillSources(ctx: NeuronContext, dependencies: V2Dependencies): Promise<void> {
+  try {
+    const configured = await dependencies.readSkillSources(ctx.location.directory)
+    if (NOSER_SKILL_SOURCES.every((url) => configured.has(url))) return
+    dependencies.log("warn", "The Noser skills are not configured; run the setup command again to add them to opencode.json")
+  } catch {
+    // Only a hint; an unreadable config already costs a warning elsewhere.
+  }
+}
+
 /**
  * The v2 plugin body. Compliance first, so a broken profile configuration
- * costs the user their models but never their protection; then the skill
- * sources, which do not depend on a profile; then the profiles;
+ * costs the user their models but never their protection; then the profiles;
  * then a subscription that re-runs discovery whenever a credential changes,
  * so `/connect` takes effect without a restart.
  */
@@ -235,14 +270,7 @@ export async function setupNeuron(ctx: NeuronContext, dependencies: V2Dependenci
     dependencies.log("error", "Neuron compliance layer could not be applied", { error: describe(error) })
   }
 
-  try {
-    if (options.skills.length) {
-      const sources = options.skills
-      fixed.push(await ctx.skill.transform((draft) => sources.forEach((url) => draft.source({ type: "url", url }))))
-    }
-  } catch (error) {
-    dependencies.log("warn", "Could not register the Noser skill sources", { error: describe(error) })
-  }
+  await hintMissingSkillSources(ctx, dependencies)
 
   if (!options.profiles.length) {
     return async () => {
@@ -252,20 +280,32 @@ export async function setupNeuron(ctx: NeuronContext, dependencies: V2Dependenci
 
   const profiles = options.profiles
   fixed.push(
-    await ctx.integration.transform((editor) => {
-      for (const profile of profiles) {
-        editor.method.update({ integrationID: profile.id, method: { type: "key", label: "API key" } })
-      }
-    }),
+    await ctx.integration.transform(
+      contained(
+        "Integration methods",
+        (editor) => {
+          for (const profile of profiles) {
+            editor.method.update({ integrationID: profile.id, method: { type: "key", label: "API key" } })
+          }
+        },
+        dependencies.log,
+      ),
+    ),
   )
 
   let providers: Registration | undefined
   const refresh = async (): Promise<void> => {
     try {
       const prepared = await prepareProfiles(ctx, options, dependencies, cache)
-      const next = await ctx.provider.transform((editor) => {
-        for (const { info, models } of prepared) editor.add({ info, models })
-      })
+      const next = await ctx.provider.transform(
+        contained(
+          "Neuron providers",
+          (editor) => {
+            for (const { info, models } of prepared) editor.add({ info, models })
+          },
+          dependencies.log,
+        ),
+      )
       const previous = providers
       providers = next
       await previous?.dispose()

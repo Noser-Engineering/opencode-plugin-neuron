@@ -39,17 +39,22 @@ function providerKeys(config: unknown): string[] {
   return keys
 }
 
-/**
- * Union of the declared provider ids over every candidate file. A missing
- * or unparseable file contributes nothing; the caller decides whether that
- * is worth a warning.
- */
-export async function readDeclaredProviderIDs(
+/** `skills` as OpenCode 2.2 writes it (a list), or 2.0's `{ urls }`. */
+function skillSources(config: unknown): string[] {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return []
+  const skills = (config as Record<string, unknown>).skills
+  const list = Array.isArray(skills) ? skills : (skills as { urls?: unknown } | undefined)?.urls
+  return Array.isArray(list) ? list.filter((entry): entry is string => typeof entry === "string") : []
+}
+
+/** A missing or unparseable file contributes nothing; the caller decides whether that is worth a warning. */
+async function collectFromConfigs(
   directory: string,
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined>,
   home: string,
+  pick: (config: unknown) => string[],
 ): Promise<Set<string>> {
-  const declared = new Set<string>()
+  const collected = new Set<string>()
   for (const file of configFileCandidates(directory, env, home)) {
     let text: string
     try {
@@ -58,7 +63,25 @@ export async function readDeclaredProviderIDs(
       continue
     }
     const parsed: unknown = parse(text, undefined, { allowTrailingComma: true, disallowComments: false })
-    for (const id of providerKeys(parsed)) declared.add(id)
+    for (const value of pick(parsed)) collected.add(value)
   }
-  return declared
+  return collected
+}
+
+/** Union of the declared provider ids over every candidate file. */
+export async function readDeclaredProviderIDs(
+  directory: string,
+  env: Record<string, string | undefined> = process.env,
+  home: string,
+): Promise<Set<string>> {
+  return collectFromConfigs(directory, env, home, providerKeys)
+}
+
+/** Union of the skill paths and URLs over every candidate file. */
+export async function readSkillSources(
+  directory: string,
+  env: Record<string, string | undefined> = process.env,
+  home: string,
+): Promise<Set<string>> {
+  return collectFromConfigs(directory, env, home, skillSources)
 }

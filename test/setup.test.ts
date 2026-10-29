@@ -153,8 +153,17 @@ describe("OpenCode 2 config setup", () => {
     ])
     expect(config.share).toBe("disabled")
     expect(config.update).toBe("notify")
+    expect(config.skills).toEqual(["https://ai-toolbox.noser.com/skills/"])
     expect(config.$schema).toBe("https://opencode.ai/config.json")
     expect(config).not.toHaveProperty("plugin")
+  })
+
+  it("adds the Noser skill index to an existing skills setting in its own shape", () => {
+    const profiles = [{ id: "work", name: "Work", baseURL: "https://proxy.example/v1" }]
+    const fromList = parseConfigText(updateConfigText(JSON.stringify({ skills: ["~/my-skills"] }), profiles, "opencode.json", 2))
+    const fromObject = parseConfigText(updateConfigText(JSON.stringify({ skills: { paths: ["x"] } }), profiles, "opencode.json", 2))
+    expect(fromList.skills).toEqual(["~/my-skills", "https://ai-toolbox.noser.com/skills/"])
+    expect(fromObject.skills).toEqual({ paths: ["x"], urls: ["https://ai-toolbox.noser.com/skills/"] })
   })
 
   it("leaves share and update alone when the user set them", () => {
