@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 ### Added: Noser skills preinstalled on OpenCode 2
 
