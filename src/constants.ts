@@ -5,7 +5,7 @@ export const PACKAGE_NAME = "@noser-engineering/opencode-plugin-neuron"
  * runtime read of package.json because the standalone binaries
  * (`bun build --compile`) ship without one.
  */
-export const PACKAGE_VERSION = "0.8.0"
+export const PACKAGE_VERSION = "0.9.0"
 export const DEFAULT_TIMEOUT_MS = 5_000
 /**
  * Skill indexes OpenCode 2 pulls on startup (`<url>/index.json`, then each
